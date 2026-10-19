@@ -1,7 +1,7 @@
 {
-  "name": "socketio-chat-client",
+  "name": "Witty Chat App",
   "version": "1.0.0",
-  "description": "Real-time chat application client with Socket.io",
+  "description": "Real-time chat application",
   "type": "module",
   "scripts": {
     "dev": "vite",
