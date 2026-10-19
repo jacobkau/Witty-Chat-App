@@ -1,10 +1,8 @@
-// socket.js - Socket.io client setup
-
 import { io } from 'socket.io-client';
 import { useEffect, useState, useMemo } from 'react';
 
 // Socket.io connection URL
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
+const SOCKET_URL = (import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000').replace(/\/$/, '');
 
 // Create socket instance
 export const socket = io(SOCKET_URL, {
@@ -65,6 +63,7 @@ export const useSocket = () => {
     socket.emit('react_to_message', { messageId, reaction });
   };
 
+  // Upload file to the server
   const uploadFile = async (file) => {
     if (!username || !socket.id) {
       console.error('Cannot upload file without a valid user session.');
@@ -76,6 +75,7 @@ export const useSocket = () => {
     formData.append('socketId', socket.id);
 
     try {
+      
       const response = await fetch(`${SOCKET_URL}/upload`, {
         method: 'POST',
         body: formData,
@@ -84,7 +84,7 @@ export const useSocket = () => {
       if (!response.ok) {
         throw new Error(`File upload failed: ${response.statusText}`);
       }
-      // The server will emit 'receive_message', so no need to handle response data here
+      
     } catch (error) {
       console.error('Error uploading file:', error);
       // Optionally, update UI to show error
@@ -94,12 +94,12 @@ export const useSocket = () => {
   const joinRoom = (roomName) => {
     socket.emit('join_room', roomName);
     setCurrentRoom(roomName);
-    setMessages([]); // Clear messages when switching rooms
+    setMessages([]); 
   };
   
   const createRoom = (roomName) => {
     socket.emit('create_room', roomName);
-    joinRoom(roomName); // Automatically join the new room
+    joinRoom(roomName); 
   };
 
   // Socket event listeners
@@ -116,7 +116,7 @@ export const useSocket = () => {
     const onUserList = (userList) => setUsers(userList);
     const onTypingUsers = (typing) => setTypingUsers(typing);
 
-    // New listener for message updates (e.g., reactions)
+    // Listener for message updates (e.g., reactions)
     const onMessageUpdated = ({ messageId, reactions }) => {
       setMessages(prev =>
         prev.map(msg =>
@@ -136,9 +136,9 @@ export const useSocket = () => {
     socket.on('private_message', onReceiveMessage);
     socket.on('user_list', onUserList);
     socket.on('typing_users', onTypingUsers);
-    socket.on('message_updated', onMessageUpdated); // Listen for updates
-    socket.on('room_list', onRoomList); // Listen for room list updates
-    socket.on('message_history', onMessageHistory); // Listen for history
+    socket.on('message_updated', onMessageUpdated);
+    socket.on('room_list', onRoomList);
+    socket.on('message_history', onMessageHistory);
 
     return () => {
       socket.off('connect', onConnect);
@@ -147,9 +147,9 @@ export const useSocket = () => {
       socket.off('private_message', onReceiveMessage);
       socket.off('user_list', onUserList);
       socket.off('typing_users', onTypingUsers);
-      socket.off('message_updated', onMessageUpdated); // Clean up listener
+      socket.off('message_updated', onMessageUpdated);
       socket.off('room_list', onRoomList);
-      socket.off('message_history', onMessageHistory); // Clean up listener
+      socket.off('message_history', onMessageHistory);
     };
   }, []);
 
@@ -176,4 +176,4 @@ export const useSocket = () => {
   };
 };
 
-export default socket; 
+export default socket;
