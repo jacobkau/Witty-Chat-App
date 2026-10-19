@@ -1,20 +1,25 @@
-// server.js - Main server file for Socket.io chat application
-
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const path = require('path');
+const mongoose = require('mongoose');
 const { randomUUID } = require('crypto');
-const connectDB = require('./config/db');
 const Message = require('./models/Message');
 const multer = require('multer');
 const fs = require('fs');
 
 // Load environment variables
 dotenv.config();
-connectDB();
+
+// --- DATABASE CONNECTION MERGED HERE ---
+const MONGO_URI = process.env.MONGO_URI;
+
+mongoose.connect(MONGO_URI)
+  .then(() => console.log('MongoDB Connected: Atlas'))
+  .catch(err => console.error('MongoDB connection error:', err));
+// ---------------------------------------
 
 // Initialize Express app
 const app = express();
@@ -190,7 +195,7 @@ io.on('connection', async (socket) => {
       senderId: socket.id,
       message,
       isPrivate: true,
-      _id: new Date().toISOString(), // Private messages need a unique key
+      _id: new Date().toISOString(),
     };
     socket.to(to).emit('receive_message', msgPayload);
     socket.emit('receive_message', msgPayload);
@@ -277,4 +282,4 @@ server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
-module.exports = { app, server, io }; 
+module.exports = { app, server, io };
