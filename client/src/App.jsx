@@ -1,22 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSocket } from './socket/socket';
 import { ThemeContext, useTheme } from './context/ThemeContext';
-import {
-  Trash2,
-  Paperclip,
-  Moon,
-  Sun,
-  Menu,
-  X,
-  Hand,
-  MessageCircle,
-} from 'lucide-react';
+import { Trash2, Paperclip, Moon, Sun, Menu, X, Hand, MessageCircle } from 'lucide-react';
 
-// Emoji reactions are intentionally kept as Unicode — they are user-generated
-// content, and users expect their OS emoji rendering (Apple/Google/etc.).
 const EMOJI_REACTIONS = ['👍', '❤️', '😂', '😮', '😢'];
 
-// ---------- Reaction Picker ----------
 const ReactionPicker = ({ onSelect }) => (
   <div className="flex gap-1 mt-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-1 shadow-md">
     {EMOJI_REACTIONS.map((emoji) => (
@@ -32,8 +20,7 @@ const ReactionPicker = ({ onSelect }) => (
   </div>
 );
 
-// ---------- Rooms Panel ----------
-const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen, onClose }) => {
+const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen, onClose, myId }) => {
   const [newRoom, setNewRoom] = useState('');
 
   const handleCreate = () => {
@@ -45,26 +32,13 @@ const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen
 
   return (
     <>
-      {/* Mobile backdrop */}
       {isOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40 md:hidden"
-          onClick={onClose}
-        />
+        <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={onClose} />
       )}
-
-      <div
-        className={`fixed md:static inset-y-0 left-0 z-50 w-60 bg-gray-800 text-gray-100 p-5 flex flex-col border-r border-gray-700
-          transform transition-transform duration-300 md:translate-x-0
-          ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
-      >
+      <div className={`fixed md:static inset-y-0 left-0 z-50 w-60 bg-gray-800 text-gray-100 p-5 flex flex-col border-r border-gray-700 transform transition-transform duration-300 md:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex justify-between items-center mb-5 md:block">
           <h3 className="text-xl font-bold">Chat Rooms</h3>
-          <button
-            onClick={onClose}
-            className="md:hidden text-gray-300 hover:text-white p-1 rounded hover:bg-gray-700 transition"
-            aria-label="Close rooms menu"
-          >
+          <button onClick={onClose} className="md:hidden text-gray-300 hover:text-white p-1 rounded hover:bg-gray-700 transition" aria-label="Close rooms menu">
             <X size={22} />
           </button>
         </div>
@@ -72,20 +46,20 @@ const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen
         <ul className="flex-1 overflow-y-auto space-y-1">
           {rooms.map((room) => (
             <li
-              key={room}
-              onClick={() => onJoin(room)}
+              key={room.name}
+              onClick={() => onJoin(room.name)}
               className={`flex justify-between items-center px-3 py-2 rounded cursor-pointer transition
-                ${room === current ? 'bg-blue-600 font-bold' : 'hover:bg-gray-700'}`}
+                ${room.name === current ? 'bg-blue-600 font-bold' : 'hover:bg-gray-700'}`}
             >
-              <span className="truncate"># {room}</span>
-              {room !== 'General' && (
+              <span className="truncate">{room.name}</span>
+              
+              {room.name !== 'General' && room.creatorId === myId && (
                 <button
                   type="button"
-                  title={`Delete ${room}`}
-                  aria-label={`Delete room ${room}`}
+                  title={`Delete ${room.name}`}
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleDeleteRoom(room);
+                    handleDeleteRoom(room.name);
                   }}
                   className="text-red-400 hover:text-red-300 hover:bg-red-500/10 p-1 rounded transition flex-shrink-0"
                 >
@@ -105,12 +79,7 @@ const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen
             placeholder="New room..."
             className="flex-1 px-3 py-2 rounded-l bg-gray-700 text-white placeholder-gray-400 focus:outline-none text-sm"
           />
-          <button
-            type="button"
-            onClick={handleCreate}
-            className="px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-r text-white font-bold transition"
-            aria-label="Create room"
-          >
+          <button type="button" onClick={handleCreate} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-r text-white font-bold transition">
             +
           </button>
         </div>
@@ -119,7 +88,6 @@ const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen
   );
 };
 
-// ---------- Helpers ----------
 function getInitials(name) {
   if (!name) return '?';
   return name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
@@ -130,12 +98,9 @@ function formatTime(ts) {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-// ---------- Theme Wrapper ----------
 function AppWrapper() {
   const [theme, setTheme] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('theme') || 'light';
-    }
+    if (typeof window !== 'undefined') return localStorage.getItem('theme') || 'light';
     return 'light';
   });
 
@@ -160,30 +125,18 @@ function AppWrapper() {
   );
 }
 
-// ---------- Main App ----------
 function App() {
   const {
-    socket,
-    username,
-    isConnected,
-    messages,
-    users,
-    typingUsers,
-    connectionStatus,
-    connect,
-    disconnect,
-    sendMessage,
-    sendPrivateMessage,
-    sendReaction,
-    uploadFile,
-    currentRoom,
-    availableRooms,
-    joinRoom,
-    createRoom,
-    deleteRoom,
+    socket, username, isConnected, messages, users, typingUsers, connectionStatus,
+    connect, disconnect, sendMessage, sendPrivateMessage, sendReaction, uploadFile,
+    currentRoom, availableRooms, joinRoom, createRoom, deleteRoom, myId
   } = useSocket();
 
-  const [loginInput, setLoginInput] = useState('');
+  // Added Login States
+  const [loginName, setLoginName] = useState('');
+  const [loginEmail, setLoginEmail] = useState('');
+  const [secretCode, setSecretCode] = useState('');
+
   const [chatInput, setChatInput] = useState('');
   const [privateRecipient, setPrivateRecipient] = useState('');
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
@@ -196,30 +149,23 @@ function App() {
 
   const { theme, toggleTheme } = useTheme();
 
-  // Request notification permission once
   useEffect(() => {
     if ('Notification' in window) {
       Notification.requestPermission().then((p) => setNotificationsEnabled(p === 'granted'));
     }
   }, []);
 
-  // Auto-scroll on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Notify + play sound on new message
   useEffect(() => {
     if (messages.length) {
       const lastMessage = messages[messages.length - 1];
       if (lastMessage.senderId !== socket?.id && !lastMessage.system) {
         if (notificationsEnabled && document.hidden) {
           new Notification(`New message from ${lastMessage.sender}`, {
-            body: lastMessage.fileUrl
-              ? lastMessage.fileType?.startsWith('image/')
-                ? 'Sent an image'
-                : 'Sent a file'
-              : lastMessage.message,
+            body: lastMessage.fileUrl ? 'Sent a file' : lastMessage.message,
           });
         }
         audioRef.current?.play().catch(() => {});
@@ -227,13 +173,12 @@ function App() {
     }
   }, [messages, notificationsEnabled, socket?.id]);
 
-  // Handle room deletion
   useEffect(() => {
     if (!socket) return;
     const handleRoomDeleted = (deletedRoom) => {
       if (currentRoom === deletedRoom) {
         joinRoom('General');
-        alert(`Room '${deletedRoom}' was deleted. You have been moved to #General.`);
+        alert(`Room '${deletedRoom}' was deleted. You have been moved to General.`);
       }
     };
     socket.on('room_deleted', handleRoomDeleted);
@@ -241,18 +186,17 @@ function App() {
   }, [currentRoom, joinRoom, socket]);
 
   const handleDeleteRoom = (room) => {
-    if (
-      window.confirm(
-        `Are you sure you want to delete the room '${room}'? This will remove all its messages.`
-      )
-    ) {
+    if (window.confirm(`Are you sure you want to delete the room '${room}'?`)) {
       deleteRoom(room);
     }
   };
 
+  // Updated Login Handler
   const handleLogin = (e) => {
     e.preventDefault();
-    if (loginInput.trim()) connect(loginInput);
+    if (loginName.trim() && loginEmail.trim() && secretCode.trim()) {
+      connect(loginName, loginEmail, secretCode);
+    }
   };
 
   const handleSend = (e) => {
@@ -280,25 +224,41 @@ function App() {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 p-4">
         <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
           <h1 className="text-3xl font-bold text-center text-blue-600 dark:text-blue-400 mb-2">
-            Welcome to QuickChat!
+            Welcome to WittyChat!
           </h1>
           <p className="text-center text-gray-600 dark:text-gray-400 mb-8">
-            A real-time chat app built with React &amp; Socket.io
+            Secure real-time messaging.
           </p>
           <form onSubmit={handleLogin} className="space-y-4">
             <input
               type="text"
-              placeholder="Enter your username"
-              value={loginInput}
-              onChange={(e) => setLoginInput(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+              placeholder="Username"
+              value={loginName}
+              onChange={(e) => setLoginName(e.target.value)}
+              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            />
+            <input
+              type="email"
+              placeholder="Email Address (Unique)"
+              value={loginEmail}
+              onChange={(e) => setLoginEmail(e.target.value)}
+              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            />
+            <input
+              type="password"
+              placeholder="Secret Membership Code"
+              value={secretCode}
+              onChange={(e) => setSecretCode(e.target.value)}
+              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
             <button
               type="submit"
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition shadow-md hover:shadow-lg"
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition shadow-md"
             >
-              Join Chat
+              Join WittyChat
             </button>
           </form>
           <p className="text-center text-gray-400 text-sm mt-6">
@@ -316,6 +276,7 @@ function App() {
         rooms={availableRooms}
         current={currentRoom}
         isOpen={isMobileMenuOpen}
+        myId={myId}
         onClose={() => setIsMobileMenuOpen(false)}
         handleDeleteRoom={handleDeleteRoom}
         onJoin={(room) => {
@@ -329,19 +290,14 @@ function App() {
       />
 
       <div className="flex flex-col h-screen min-w-0">
-        {/* Header */}
         <header className="px-4 md:px-6 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-between gap-2">
           <div className="flex items-center min-w-0">
-            <button
-              onClick={() => setIsMobileMenuOpen(true)}
-              className="md:hidden mr-3 text-gray-700 dark:text-gray-200 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-              aria-label="Open rooms menu"
-            >
+            <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden mr-3 text-gray-700 dark:text-gray-200 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition">
               <Menu size={22} />
             </button>
             <h2 className="text-lg md:text-xl font-bold truncate">
-              QuickChat:{' '}
-              <span className="text-blue-600 dark:text-blue-400">#{currentRoom}</span>
+              WittyChat:{' '}
+              <span className="text-blue-600 dark:text-blue-400">{currentRoom}</span>
             </h2>
           </div>
           <div className="flex items-center gap-2 md:gap-3">
@@ -349,46 +305,31 @@ function App() {
               <Hand size={14} className="text-yellow-500" />
               {username}
             </span>
-            <button
-              onClick={toggleTheme}
-              className="p-2 border border-gray-300 dark:border-gray-600 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-              aria-label="Toggle theme"
-            >
+            <button onClick={toggleTheme} className="p-2 border border-gray-300 dark:border-gray-600 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition">
               {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
             </button>
           </div>
         </header>
 
-        {/* Chat window — row: users sidebar + messages */}
         <div className="flex flex-row flex-1 overflow-hidden">
-          {/* Users sidebar */}
           <aside className="hidden sm:flex flex-col w-44 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 overflow-y-auto">
             <strong className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
               Online ({users.length})
             </strong>
             <ul className="space-y-1">
-              {users.map(
-                (u) =>
-                  u.id !== socket?.id && (
-                    <li
-                      key={u.id}
-                      onClick={() =>
-                        setPrivateRecipient(privateRecipient === u.id ? '' : u.id)
-                      }
-                      className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer text-sm transition
-                        ${u.id === privateRecipient
-                          ? 'bg-blue-600 text-white'
-                          : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-                    >
-                      <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
-                      <span className="truncate">{u.username}</span>
-                    </li>
-                  )
-              )}
+              {users.map((u) => u.id !== socket?.id && (
+                <li
+                  key={u.id}
+                  onClick={() => setPrivateRecipient(privateRecipient === u.id ? '' : u.id)}
+                  className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer text-sm transition ${u.id === privateRecipient ? 'bg-blue-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                  <span className="truncate">{u.username}</span>
+                </li>
+              ))}
             </ul>
           </aside>
 
-          {/* Messages area */}
           <div className="flex flex-col flex-1 min-w-0">
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
               {messages.map((msg) => {
@@ -406,80 +347,35 @@ function App() {
                 }
 
                 return (
-                  <div
-                    key={msg._id || msg.id}
-                    className={`flex items-end gap-2 max-w-[85%] md:max-w-[70%]
-                      ${isSent ? 'ml-auto flex-row-reverse' : 'mr-auto flex-row'}`}
-                  >
-                    <div
-                      className="w-9 h-9 rounded-full bg-gray-400 text-white flex items-center justify-center font-bold text-sm flex-shrink-0"
-                      title={msg.sender}
-                    >
+                  <div key={msg._id || msg.id} className={`flex items-end gap-2 max-w-[85%] md:max-w-[70%] ${isSent ? 'ml-auto flex-row-reverse' : 'mr-auto flex-row'}`}>
+                    <div className="w-9 h-9 rounded-full bg-gray-400 text-white flex items-center justify-center font-bold text-sm flex-shrink-0" title={msg.sender}>
                       {getInitials(msg.sender)}
                     </div>
-
                     <div className="flex flex-col min-w-0">
-                      <div
-                        className={`text-xs font-bold mb-1 ${
-                          isSent
-                            ? 'text-right text-blue-600 dark:text-blue-400'
-                            : 'text-gray-500 dark:text-gray-400'
-                        }`}
-                      >
+                      <div className={`text-xs font-bold mb-1 ${isSent ? 'text-right text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}`}>
                         {isSent ? 'You' : msg.sender}
                       </div>
-
-                      <div
-                        className={`px-3 py-2 rounded-2xl shadow-sm break-words
-                          ${isSent
-                            ? 'bg-blue-600 text-white rounded-br-sm'
-                            : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-bl-sm border border-gray-200 dark:border-gray-700'}`}
-                      >
-                        {msg.message && (
-                          <p className="whitespace-pre-wrap">{msg.message}</p>
-                        )}
-
-                        {msg.fileUrl &&
-                          (msg.fileType?.startsWith('image/') ? (
-                            <img
-                              src={msg.fileUrl}
-                              alt={msg.fileName}
-                              onClick={() => window.open(msg.fileUrl, '_blank')}
-                              className="max-w-full max-h-72 rounded-lg mt-1 cursor-pointer"
-                            />
-                          ) : (
-                            <a
-                              href={msg.fileUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 mt-1 underline font-bold"
-                            >
-                              <Paperclip size={14} />
-                              {msg.fileName || 'Download File'}
-                            </a>
-                          ))}
+                      <div className={`px-3 py-2 rounded-2xl shadow-sm break-words ${isSent ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-bl-sm border border-gray-200 dark:border-gray-700'}`}>
+                        {msg.message && <p className="whitespace-pre-wrap">{msg.message}</p>}
+                        {msg.fileUrl && (msg.fileType?.startsWith('image/') ? (
+                          <img src={msg.fileUrl} alt={msg.fileName} onClick={() => window.open(msg.fileUrl, '_blank')} className="max-w-full max-h-72 rounded-lg mt-1 cursor-pointer" />
+                        ) : (
+                          <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 mt-1 underline font-bold">
+                            <Paperclip size={14} />
+                            {msg.fileName || 'Download File'}
+                          </a>
+                        ))}
                       </div>
-
                       <div className="flex items-center gap-2 mt-1 text-xs text-gray-400 dark:text-gray-500">
                         <span>{formatTime(msg.createdAt)}</span>
-                        {msg.reactions &&
-                          Object.entries(msg.reactions).map(
-                            ([reaction, reactors]) =>
-                              reactors.length > 0 && (
-                                <span
-                                  key={reaction}
-                                  className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-1.5 py-0.5 rounded-full"
-                                >
-                                  {reaction} {reactors.length}
-                                </span>
-                              )
-                          )}
+                        {msg.reactions && Object.entries(msg.reactions).map(([reaction, reactors]) => reactors.length > 0 && (
+                          <span key={reaction} className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-1.5 py-0.5 rounded-full">
+                            {reaction} {reactors.length}
+                          </span>
+                        ))}
                       </div>
-
                       {activePicker === msg._id && !msg.fileUrl && (
-                        <ReactionPicker
-                          onSelect={(emoji) => handleReaction(msg._id, emoji)}
-                        />
+                        <ReactionPicker onSelect={(emoji) => handleReaction(msg._id, emoji)} />
                       )}
                     </div>
                   </div>
@@ -488,7 +384,6 @@ function App() {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Input area */}
             <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 md:px-4 py-3">
               {typingUsers.length > 0 && (
                 <div className="text-xs text-gray-500 dark:text-gray-400 italic mb-1">
@@ -498,48 +393,23 @@ function App() {
               {privateRecipient && (
                 <div className="text-xs text-blue-600 dark:text-blue-400 mb-1 flex items-center gap-1 flex-wrap">
                   <MessageCircle size={12} />
-                  Private chat with{' '}
-                  <strong>
-                    {users.find((u) => u.id === privateRecipient)?.username}
-                  </strong>
-                  <button
-                    onClick={() => setPrivateRecipient('')}
-                    className="ml-2 text-red-500 hover:underline"
-                  >
-                    cancel
-                  </button>
+                  Private chat with <strong>{users.find((u) => u.id === privateRecipient)?.username}</strong>
+                  <button onClick={() => setPrivateRecipient('')} className="ml-2 text-red-500 hover:underline">cancel</button>
                 </div>
               )}
               <form onSubmit={handleSend} className="flex items-center gap-2">
                 <input
                   type="text"
-                  placeholder={
-                    privateRecipient
-                      ? `Message ${users.find((u) => u.id === privateRecipient)?.username}...`
-                      : 'Type a message...'
-                  }
+                  placeholder={privateRecipient ? `Message ${users.find((u) => u.id === privateRecipient)?.username}...` : 'Type a message...'}
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
                   className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 transition text-sm"
                 />
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
-                  aria-label="Attach file"
-                >
+                <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" />
+                <button type="button" onClick={() => fileInputRef.current?.click()} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
                   <Paperclip size={18} />
                 </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-semibold text-sm transition"
-                >
+                <button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-semibold text-sm transition">
                   Send
                 </button>
               </form>
@@ -547,21 +417,13 @@ function App() {
           </div>
         </div>
 
-        {/* Leave button */}
         <div className="px-4 py-2 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
-          <button
-            onClick={disconnect}
-            className="w-full py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition"
-          >
+          <button onClick={disconnect} className="w-full py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition">
             Leave Chat
           </button>
         </div>
       </div>
-
-      <audio
-        ref={audioRef}
-        src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmGgU7k9n1unEiBC13yO/eizEIHWq+8+OWT"
-      />
+      <audio ref={audioRef} src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmGgU7k9n1unEiBC13yO/eizEIHWq+8+OWT" />
     </div>
   );
 }
