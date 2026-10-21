@@ -3,103 +3,118 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const dotenv = require('dotenv');
-const path = require('path');
 const mongoose = require('mongoose');
-const { randomUUID } = require('crypto');
+const cloudinary = require('cloudinary').v2;
 const Message = require('./models/Message');
-const multer = require('multer');
-const fs = require('fs');
+const User = require('./models/User');
+const Room = require('./models/Room');
 
-// Load environment variables
 dotenv.config();
 
-// --- DATABASE CONNECTION MERGED HERE ---
-const MONGO_URI = process.env.MONGO_URI;
+// Cloudinary Configuration
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
-mongoose.connect(MONGO_URI)
-  .then(() => console.log('MongoDB Connected: Atlas'))
+// Connect MongoDB
+mongoose.connect(process.env.MONGO_URI)
+  .then(async () => {
+    console.log('MongoDB Connected');
+    // Seed General room if it doesn't exist
+    const generalExists = await Room.findOne({ name: 'General' });
+    if (!generalExists) {
+      await Room.create({ name: 'General', creatorId: 'system' });
+    }
+  })
   .catch(err => console.error('MongoDB connection error:', err));
-// ---------------------------------------
 
-// Initialize Express app
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
-    methods: ['GET', 'POST'],
-  },
+  cors: { origin: process.env.CLIENT_URL || 'http://localhost:5173', methods: ['GET', 'POST'] },
 });
 
-// Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
 
-// --- File Upload Setup ---
-const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir);
-}
+// --- Socket Authentication (Secret Code & Unique Email) ---
+io.use(async (socket, next) => {
+  const { username, email, secretCode } = socket.handshake.auth;
 
-app.use('/uploads', express.static(uploadsDir));
+  // 1. Verify Secret Code
+  if (secretCode !== process.env.CHAT_SECRET_CODE) {
+    return next(new Error('Invalid Secret Membership Code.'));
+  }
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadsDir),
-  filename: (req, file, cb) => {
-    cb(null, `${Date.now()}-${file.originalname}`);
-  },
+  if (!username || !email) {
+    return next(new Error('Username and Email are required.'));
+  }
+
+  try {
+    // 2. Check for existing user
+    let user = await User.findOne({ email });
+
+    if (user) {
+      // Prevent double login
+      if (user.isOnline) {
+        return next(new Error('This email is already logged in from another session.'));
+      }
+      // Update existing user
+      user.username = username;
+      user.isOnline = true;
+      user.socketId = socket.id;
+      await user.save();
+    } else {
+      // Create new user
+      user = await User.create({
+        username,
+        email,
+        isOnline: true,
+        socketId: socket.id,
+      });
+    }
+
+    socket.username = user.username;
+    socket.email = user.email;
+    socket.room = 'General';
+    next();
+  } catch (error) {
+    console.error(error);
+    next(new Error('Database error during login.'));
+  }
 });
 
-const upload = multer({ storage });
-
-app.post('/upload', upload.single('file'), async (req, res) => {
+// --- Cloudinary Upload Route ---
+app.post('/upload', async (req, res) => {
   try {
-    const { file } = req;
-    const { username, socketId } = req.body;
-    if (!file || !username || !socketId) {
-      return res.status(400).send('Missing file or user information.');
-    }
+    const { file, username, socketId, room } = req.body;
     
-    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${file.filename}`;
+    // Upload to Cloudinary
+    const result = await cloudinary.uploader.upload(file, {
+      folder: 'witty_chat_uploads',
+    });
 
     const message = new Message({
       sender: username,
       senderId: socketId,
-      fileUrl,
-      fileName: file.originalname,
-      fileType: file.mimetype,
+      room: room,
+      fileUrl: result.secure_url,
+      fileName: result.original_filename,
+      fileType: result.format,
     });
     
     await message.save();
-    io.emit('receive_message', message.toObject());
-    
+    io.to(room).emit('receive_message', message.toObject());
     res.status(201).json({ message: 'File uploaded successfully', data: message.toObject() });
   } catch (error) {
     console.error('File upload error:', error);
     res.status(500).send('Server error during file upload.');
   }
 });
-// --- End File Upload Setup ---
 
-// In-memory data stores
-let messages = [];
-const typingUsers = {};
-
-// --- Room Management ---
-let availableRooms = ['General', 'Technology', 'Random'];
-const getRooms = () => Array.from(io.sockets.adapter.rooms);
-// --- End Room Management ---
-
-// Middleware for authentication
-io.use((socket, next) => {
-  const username = socket.handshake.auth.username;
-  if (!username) return next(new Error('invalid username'));
-  socket.username = username;
-  socket.room = 'General'; // Default room
-  next();
-});
-
+// --- Room & User Helpers ---
 const getUsersInRoom = (room) => {
   const roomSockets = io.sockets.adapter.rooms.get(room);
   if (!roomSockets) return [];
@@ -109,73 +124,70 @@ const getUsersInRoom = (room) => {
   });
 };
 
-// Socket.io connection handler
+// --- Socket Connection ---
 io.on('connection', async (socket) => {
-  console.log(`${socket.username} (${socket.id}) connected`);
   socket.join(socket.room);
 
-  // Send initial data to the connected client
-  socket.emit('room_list', availableRooms);
+  // Send current rooms from DB
+  const rooms = await Room.find({});
+  socket.emit('room_list', rooms);
   io.to(socket.room).emit('user_list', getUsersInRoom(socket.room));
 
-  try {
-    const history = await Message.find({ room: socket.room }).sort({ createdAt: -1 }).limit(50).lean();
-    socket.emit('message_history', history.reverse());
-  } catch (error) {
-    console.error(`Error fetching history for room ${socket.room}:`, error);
-  }
+  // Load history
+  const history = await Message.find({ room: socket.room }).sort({ createdAt: -1 }).limit(50).lean();
+  socket.emit('message_history', history.reverse());
 
   socket.broadcast.to(socket.room).emit('receive_message', {
-    sender: 'System',
-    message: `${socket.username} has joined the chat`,
-    _id: new Date().toISOString(),
+    sender: 'System', message: `${socket.username} has joined the chat`, _id: new Date().toISOString(),
   });
 
   socket.on('join_room', async (roomName) => {
-    // Leave previous room
-    socket.broadcast.to(socket.room).emit('user_list', getUsersInRoom(socket.room).filter(u => u.id !== socket.id));
     socket.leave(socket.room);
-    
-    // Join new room
     socket.room = roomName;
     socket.join(roomName);
     
-    // Send history and user list for the new room
     const history = await Message.find({ room: roomName }).sort({ createdAt: -1 }).limit(50).lean();
     socket.emit('message_history', history.reverse());
     io.to(roomName).emit('user_list', getUsersInRoom(roomName));
   });
   
-  socket.on('create_room', (roomName) => {
-    if (!availableRooms.includes(roomName)) {
-      availableRooms.push(roomName);
-      io.emit('room_list', availableRooms); // Notify all clients of the new room
+  socket.on('create_room', async (roomName) => {
+    const exists = await Room.findOne({ name: roomName });
+    if (!exists) {
+      await Room.create({ name: roomName, creatorId: socket.id });
+      const rooms = await Room.find({});
+      io.emit('room_list', rooms); // Update all clients
     }
   });
 
   socket.on('delete_room', async (roomName) => {
-    if (roomName === 'General') return; // Don't allow deleting General
-    availableRooms = availableRooms.filter(r => r !== roomName);
-    io.emit('room_list', availableRooms);
-    // Notify users in the deleted room to switch to General
-    const roomSockets = io.sockets.adapter.rooms.get(roomName);
-    if (roomSockets) {
-      for (const socketId of roomSockets) {
-        const s = io.sockets.sockets.get(socketId);
-        if (s) {
-          s.leave(roomName);
-          s.join('General');
-          s.room = 'General';
-          s.emit('room_deleted', roomName);
-          // Send new history and user list
-          const history = await Message.find({ room: 'General' }).sort({ createdAt: -1 }).limit(50).lean();
-          s.emit('message_history', history.reverse());
-          io.to('General').emit('user_list', getUsersInRoom('General'));
+    if (roomName === 'General') return; 
+    
+    // Check permissions
+    const room = await Room.findOne({ name: roomName });
+    if (room && room.creatorId === socket.id) {
+      await Room.deleteOne({ name: roomName });
+      const rooms = await Room.find({});
+      io.emit('room_list', rooms);
+      
+      // Move users to General
+      const roomSockets = io.sockets.adapter.rooms.get(roomName);
+      if (roomSockets) {
+        for (const sId of roomSockets) {
+          const s = io.sockets.sockets.get(sId);
+          if (s) {
+            s.leave(roomName);
+            s.join('General');
+            s.room = 'General';
+            s.emit('room_deleted', roomName);
+            const history = await Message.find({ room: 'General' }).sort({ createdAt: -1 }).limit(50).lean();
+            s.emit('message_history', history.reverse());
+            io.to('General').emit('user_list', getUsersInRoom('General'));
+          }
         }
       }
+      await Message.deleteMany({ room: roomName });
     }
-    // Delete all messages in the deleted room
-    await Message.deleteMany({ room: roomName });
   });
 
   socket.on('send_message', async (data) => {
@@ -183,7 +195,7 @@ io.on('connection', async (socket) => {
       sender: socket.username,
       senderId: socket.id,
       message: data.message,
-      room: socket.room, // Save message to the current room
+      room: socket.room,
     });
     await message.save();
     io.to(socket.room).emit('receive_message', message.toObject());
@@ -191,95 +203,33 @@ io.on('connection', async (socket) => {
 
   socket.on('private_message', ({ to, message }) => {
     const msgPayload = {
-      sender: socket.username,
-      senderId: socket.id,
-      message,
-      isPrivate: true,
-      _id: new Date().toISOString(),
+      sender: socket.username, senderId: socket.id, message, isPrivate: true, _id: new Date().toISOString(),
     };
     socket.to(to).emit('receive_message', msgPayload);
     socket.emit('receive_message', msgPayload);
   });
 
-  // Handle message reactions
   socket.on('react_to_message', async ({ messageId, reaction }) => {
-    try {
-      const message = await Message.findById(messageId);
-      if (!message) return;
-
-      const userList = message.reactions.get(reaction) || [];
-      const userIndex = userList.indexOf(socket.username);
-
-      if (userIndex > -1) {
-        userList.splice(userIndex, 1);
-      } else {
-        userList.push(socket.username);
-      }
-      
-      message.reactions.set(reaction, userList);
-      await message.save();
-      
-      // Emit update to the specific room
-      io.to(message.room).emit('message_updated', { messageId, reactions: Object.fromEntries(message.reactions) });
-    } catch (error) {
-      console.error('Error reacting to message:', error);
-    }
+    const message = await Message.findById(messageId);
+    if (!message) return;
+    const userList = message.reactions.get(reaction) || [];
+    const idx = userList.indexOf(socket.username);
+    if (idx > -1) userList.splice(idx, 1); else userList.push(socket.username);
+    message.reactions.set(reaction, userList);
+    await message.save();
+    io.to(message.room).emit('message_updated', { messageId, reactions: Object.fromEntries(message.reactions) });
   });
 
-  // Handle typing indicator
-  socket.on('typing', (isTyping) => {
-    if (isTyping) {
-      typingUsers[socket.username] = true;
-    } else {
-      delete typingUsers[socket.username];
-    }
-    io.emit('typing_users', Object.keys(typingUsers));
-  });
-
-  // Handle disconnection
-  socket.on('disconnect', () => {
-    console.log(`${socket.username} (${socket.id}) disconnected`);
-    io.to(socket.room).emit('user_list', getUsersInRoom(socket.room).filter(u => u.id !== socket.id));
+  socket.on('disconnect', async () => {
+    // Mark user offline in DB
+    await User.findOneAndUpdate({ socketId: socket.id }, { isOnline: false, socketId: null });
+    
+    io.to(socket.room).emit('user_list', getUsersInRoom(socket.room));
     io.to(socket.room).emit('receive_message', {
-      sender: 'System',
-      message: `${socket.username} has left the chat`,
-      _id: new Date().toISOString(),
+      sender: 'System', message: `${socket.username} has left the chat`, _id: new Date().toISOString(),
     });
   });
 });
 
-// API routes
-app.get('/api/messages', (req, res) => {
-  res.json(messages);
-});
-
-app.get('/api/users', (req, res) => {
-  res.json(Object.values(typingUsers));
-});
-
-// Search messages API
-app.get('/api/messages/search', (req, res) => {
-  const { q } = req.query;
-  if (!q) {
-    return res.json([]);
-  }
-  
-  const searchResults = messages.filter(msg => 
-    msg.message && msg.message.toLowerCase().includes(q.toLowerCase())
-  );
-  
-  res.json(searchResults);
-});
-
-// Root route
-app.get('/', (req, res) => {
-  res.send('Socket.io Chat Server is running');
-});
-
-// Start server
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
-
-module.exports = { app, server, io };
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
