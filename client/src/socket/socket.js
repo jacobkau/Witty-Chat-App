@@ -18,11 +18,9 @@ export const useSocket = () => {
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
   const [username, setUsername] = useState('');
   const [currentRoom, setCurrentRoom] = useState('General');
-  // Rooms is now an object/array with creator info instead of just a string
-  const [availableRooms, setAvailableRooms] = useState([{ name: 'General', creatorId: 'system' }]);
+  const [availableRooms, setAvailableRooms] = useState([]);
   const [myId, setMyId] = useState('');
 
-  // Connect takes credentials now
   const connect = (username, email, secretCode) => {
     setUsername(username);
     setConnectionStatus('connecting');
@@ -48,29 +46,37 @@ export const useSocket = () => {
     socket.emit('react_to_message', { messageId, reaction });
   };
 
+  // Updated to Base64 for Cloudinary
   const uploadFile = async (file) => {
     if (!username || !socket.id) return;
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('username', username);
-    formData.append('socketId', socket.id);
 
-    try {
-      await fetch(`${SOCKET_URL}/upload`, { method: 'POST', body: formData });
-    } catch (error) {
-      console.error('Error uploading file:', error);
-    }
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onloadend = async () => {
+      const base64String = reader.result;
+      try {
+        await fetch(`${SOCKET_URL}/upload`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            file: base64String,
+            username: username,
+            socketId: socket.id,
+            room: currentRoom
+          }),
+        });
+      } catch (error) {
+        console.error('Error uploading file:', error);
+      }
+    };
   };
 
-  const joinRoom = (roomName) => {
-    socket.emit('join_room', roomName);
-    setCurrentRoom(roomName);
-    setMessages([]);
+  const joinRoom = (roomName, secretCode = '') => {
+    socket.emit('join_room', { roomName, secretCode });
   };
 
-  const createRoom = (roomName) => {
-    socket.emit('create_room', roomName);
-    joinRoom(roomName);
+  const createRoom = (roomName, secretCode) => {
+    socket.emit('create_room', { roomName, secretCode });
   };
 
   const deleteRoom = (roomName) => {
@@ -88,7 +94,6 @@ export const useSocket = () => {
       setConnectionStatus('disconnected');
     };
     
-    // Handle Auth Errors from Server
     const onAuthError = (msg) => {
       alert(msg);
       setConnectionStatus('error');
@@ -98,17 +103,22 @@ export const useSocket = () => {
     const onReceiveMessage = (message) => setMessages(prev => [...prev, message]);
     const onUserList = (userList) => setUsers(userList);
     const onTypingUsers = (typing) => setTypingUsers(typing);
-
     const onMessageUpdated = ({ messageId, reactions }) => {
       setMessages(prev => prev.map(msg => msg._id === messageId ? { ...msg, reactions } : msg));
     };
 
     const onRoomList = (rooms) => setAvailableRooms(rooms);
     const onMessageHistory = (history) => setMessages(history);
+    
+    const onRoomError = (msg) => alert(msg);
+    const onRoomJoined = (roomName) => {
+      setCurrentRoom(roomName);
+      setMessages([]);
+    };
 
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
-    socket.on('auth_error', onAuthError); // New listener
+    socket.on('auth_error', onAuthError);
     socket.on('receive_message', onReceiveMessage);
     socket.on('private_message', onReceiveMessage);
     socket.on('user_list', onUserList);
@@ -116,6 +126,8 @@ export const useSocket = () => {
     socket.on('message_updated', onMessageUpdated);
     socket.on('room_list', onRoomList);
     socket.on('message_history', onMessageHistory);
+    socket.on('room_error', onRoomError);
+    socket.on('room_joined', onRoomJoined);
 
     return () => {
       socket.off('connect', onConnect);
@@ -128,6 +140,8 @@ export const useSocket = () => {
       socket.off('message_updated', onMessageUpdated);
       socket.off('room_list', onRoomList);
       socket.off('message_history', onMessageHistory);
+      socket.off('room_error', onRoomError);
+      socket.off('room_joined', onRoomJoined);
     };
   }, []);
 
