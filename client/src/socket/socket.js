@@ -1,10 +1,8 @@
 import { io } from 'socket.io-client';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 
-// Socket.io connection URL
 const SOCKET_URL = (import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000').replace(/\/$/, '');
 
-// Create socket instance
 export const socket = io(SOCKET_URL, {
   autoConnect: false,
   reconnection: true,
@@ -12,7 +10,6 @@ export const socket = io(SOCKET_URL, {
   reconnectionDelay: 2000,
 });
 
-// Custom hook for using socket.io
 export const useSocket = () => {
   const [isConnected, setIsConnected] = useState(socket.connected);
   const [messages, setMessages] = useState([]);
@@ -21,117 +18,97 @@ export const useSocket = () => {
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
   const [username, setUsername] = useState('');
   const [currentRoom, setCurrentRoom] = useState('General');
-  const [availableRooms, setAvailableRooms] = useState(['General']);
+  // Rooms is now an object/array with creator info instead of just a string
+  const [availableRooms, setAvailableRooms] = useState([{ name: 'General', creatorId: 'system' }]);
+  const [myId, setMyId] = useState('');
 
-  // Connect to socket server
-  const connect = (user) => {
-    setUsername(user);
+  // Connect takes credentials now
+  const connect = (username, email, secretCode) => {
+    setUsername(username);
     setConnectionStatus('connecting');
-    socket.auth = { username: user };
+    socket.auth = { username, email, secretCode };
     socket.connect();
   };
 
-  // Disconnect from socket server
   const disconnect = () => {
     socket.disconnect();
+    setIsConnected(false);
+    setUsername('');
   };
 
-  // Send a message
   const sendMessage = (message) => {
     socket.emit('send_message', { message });
   };
 
-  // Send a private message
   const sendPrivateMessage = (to, message) => {
     socket.emit('private_message', { to, message });
   };
 
-  // Set typing status
-  const setTyping = (isTyping) => {
-    socket.emit('typing', isTyping);
-  };
-  
-  // Search messages
-  const searchMessages = (query) => {
-    return messages.filter(msg =>
-      msg.message && msg.message.toLowerCase().includes(query.toLowerCase())
-    );
-  };
-
-  // New function to send reactions
   const sendReaction = (messageId, reaction) => {
     socket.emit('react_to_message', { messageId, reaction });
   };
 
-  // Upload file to the server
   const uploadFile = async (file) => {
-    if (!username || !socket.id) {
-      console.error('Cannot upload file without a valid user session.');
-      return;
-    }
+    if (!username || !socket.id) return;
     const formData = new FormData();
     formData.append('file', file);
     formData.append('username', username);
     formData.append('socketId', socket.id);
 
     try {
-      
-      const response = await fetch(`${SOCKET_URL}/upload`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error(`File upload failed: ${response.statusText}`);
-      }
-      
+      await fetch(`${SOCKET_URL}/upload`, { method: 'POST', body: formData });
     } catch (error) {
       console.error('Error uploading file:', error);
-      // Optionally, update UI to show error
     }
   };
 
   const joinRoom = (roomName) => {
     socket.emit('join_room', roomName);
     setCurrentRoom(roomName);
-    setMessages([]); 
-  };
-  
-  const createRoom = (roomName) => {
-    socket.emit('create_room', roomName);
-    joinRoom(roomName); 
+    setMessages([]);
   };
 
-  // Socket event listeners
+  const createRoom = (roomName) => {
+    socket.emit('create_room', roomName);
+    joinRoom(roomName);
+  };
+
+  const deleteRoom = (roomName) => {
+    socket.emit('delete_room', roomName);
+  };
+
   useEffect(() => {
     const onConnect = () => {
       setIsConnected(true);
       setConnectionStatus('connected');
+      setMyId(socket.id);
     };
     const onDisconnect = () => {
       setIsConnected(false);
       setConnectionStatus('disconnected');
     };
+    
+    // Handle Auth Errors from Server
+    const onAuthError = (msg) => {
+      alert(msg);
+      setConnectionStatus('error');
+      socket.disconnect();
+    };
+
     const onReceiveMessage = (message) => setMessages(prev => [...prev, message]);
     const onUserList = (userList) => setUsers(userList);
     const onTypingUsers = (typing) => setTypingUsers(typing);
 
-    // Listener for message updates (e.g., reactions)
     const onMessageUpdated = ({ messageId, reactions }) => {
-      setMessages(prev =>
-        prev.map(msg =>
-          msg._id === messageId ? { ...msg, reactions } : msg
-        )
-      );
+      setMessages(prev => prev.map(msg => msg._id === messageId ? { ...msg, reactions } : msg));
     };
 
     const onRoomList = (rooms) => setAvailableRooms(rooms);
-    const onMessageHistory = (history) => {
-      setMessages(history);
-    };
+    const onMessageHistory = (history) => setMessages(history);
 
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
+    socket.on('auth_error', onAuthError); // New listener
     socket.on('receive_message', onReceiveMessage);
     socket.on('private_message', onReceiveMessage);
     socket.on('user_list', onUserList);
@@ -143,6 +120,7 @@ export const useSocket = () => {
     return () => {
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
+      socket.off('auth_error', onAuthError);
       socket.off('receive_message', onReceiveMessage);
       socket.off('private_message', onReceiveMessage);
       socket.off('user_list', onUserList);
@@ -154,25 +132,9 @@ export const useSocket = () => {
   }, []);
 
   return {
-    socket,
-    isConnected,
-    messages,
-    users,
-    typingUsers,
-    connectionStatus,
-    username,
-    connect,
-    disconnect,
-    sendMessage,
-    sendPrivateMessage,
-    setTyping,
-    searchMessages,
-    sendReaction,
-    uploadFile,
-    currentRoom,
-    availableRooms,
-    joinRoom,
-    createRoom,
+    socket, isConnected, messages, users, typingUsers, connectionStatus, username, myId,
+    connect, disconnect, sendMessage, sendPrivateMessage, sendReaction, uploadFile,
+    currentRoom, availableRooms, joinRoom, createRoom, deleteRoom,
   };
 };
 
