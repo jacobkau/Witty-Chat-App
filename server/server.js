@@ -22,10 +22,9 @@ cloudinary.config({
 mongoose.connect(process.env.MONGO_URI)
   .then(async () => {
     console.log('MongoDB Connected');
-    // Seed General room if it doesn't exist
     const generalExists = await Room.findOne({ name: 'General' });
     if (!generalExists) {
-      await Room.create({ name: 'General', creatorId: 'system' });
+      await Room.create({ name: 'General', creatorId: 'system', creatorName: 'System', secretCode: 'public' });
     }
   })
   .catch(err => console.error('MongoDB connection error:', err));
@@ -36,14 +35,14 @@ const io = new Server(server, {
   cors: { origin: process.env.CLIENT_URL || 'http://localhost:5173', methods: ['GET', 'POST'] },
 });
 
-app.use(cors());
-app.use(express.json());
+app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173' }));
+app.use(express.json({ limit: '50mb' })); // Increased limit for base64 images
 
-// --- Socket Authentication (Secret Code & Unique Email) ---
+// --- Socket Authentication (Unique Email & Secret App Code) ---
 io.use(async (socket, next) => {
   const { username, email, secretCode } = socket.handshake.auth;
 
-  // 1. Verify Secret Code
+  // App-level secret code check
   if (secretCode !== process.env.CHAT_SECRET_CODE) {
     return next(new Error('Invalid Secret Membership Code.'));
   }
@@ -53,27 +52,16 @@ io.use(async (socket, next) => {
   }
 
   try {
-    // 2. Check for existing user
     let user = await User.findOne({ email });
 
     if (user) {
-      // Prevent double login
-      if (user.isOnline) {
-        return next(new Error('This email is already logged in from another session.'));
-      }
-      // Update existing user
+      if (user.isOnline) return next(new Error('This email is already logged in.'));
       user.username = username;
       user.isOnline = true;
       user.socketId = socket.id;
       await user.save();
     } else {
-      // Create new user
-      user = await User.create({
-        username,
-        email,
-        isOnline: true,
-        socketId: socket.id,
-      });
+      user = await User.create({ username, email, isOnline: true, socketId: socket.id });
     }
 
     socket.username = user.username;
@@ -91,7 +79,7 @@ app.post('/upload', async (req, res) => {
   try {
     const { file, username, socketId, room } = req.body;
     
-    // Upload to Cloudinary
+    // Upload base64 string to Cloudinary
     const result = await cloudinary.uploader.upload(file, {
       folder: 'witty_chat_uploads',
     });
@@ -114,7 +102,7 @@ app.post('/upload', async (req, res) => {
   }
 });
 
-// --- Room & User Helpers ---
+// --- Helpers ---
 const getUsersInRoom = (room) => {
   const roomSockets = io.sockets.adapter.rooms.get(room);
   if (!roomSockets) return [];
@@ -128,12 +116,11 @@ const getUsersInRoom = (room) => {
 io.on('connection', async (socket) => {
   socket.join(socket.room);
 
-  // Send current rooms from DB
-  const rooms = await Room.find({});
+  // Send current rooms (excluding secret codes for privacy)
+  const rooms = await Room.find({}, '-secretCode');
   socket.emit('room_list', rooms);
   io.to(socket.room).emit('user_list', getUsersInRoom(socket.room));
 
-  // Load history
   const history = await Message.find({ room: socket.room }).sort({ createdAt: -1 }).limit(50).lean();
   socket.emit('message_history', history.reverse());
 
@@ -141,7 +128,37 @@ io.on('connection', async (socket) => {
     sender: 'System', message: `${socket.username} has joined the chat`, _id: new Date().toISOString(),
   });
 
-  socket.on('join_room', async (roomName) => {
+  // CREATE ROOM
+  socket.on('create_room', async ({ roomName, secretCode }) => {
+    if (!secretCode || secretCode.trim() === '') {
+      return socket.emit('room_error', 'Room must have a secret code.');
+    }
+
+    const exists = await Room.findOne({ name: roomName });
+    if (exists) return socket.emit('room_error', 'Room name already taken.');
+
+    await Room.create({
+      name: roomName,
+      creatorId: socket.id,
+      creatorName: socket.username,
+      secretCode: secretCode,
+    });
+
+    const updatedRooms = await Room.find({}, '-secretCode');
+    io.emit('room_list', updatedRooms);
+  });
+
+  // JOIN ROOM
+  socket.on('join_room', async ({ roomName, secretCode }) => {
+    const room = await Room.findOne({ name: roomName });
+    
+    if (!room) return socket.emit('room_error', 'Room not found.');
+    
+    // Allow creator to bypass code, or verify the code
+    if (room.creatorId !== socket.id && room.secretCode !== secretCode) {
+      return socket.emit('room_error', 'Incorrect secret code for this room.');
+    }
+
     socket.leave(socket.room);
     socket.room = roomName;
     socket.join(roomName);
@@ -149,28 +166,19 @@ io.on('connection', async (socket) => {
     const history = await Message.find({ room: roomName }).sort({ createdAt: -1 }).limit(50).lean();
     socket.emit('message_history', history.reverse());
     io.to(roomName).emit('user_list', getUsersInRoom(roomName));
-  });
-  
-  socket.on('create_room', async (roomName) => {
-    const exists = await Room.findOne({ name: roomName });
-    if (!exists) {
-      await Room.create({ name: roomName, creatorId: socket.id });
-      const rooms = await Room.find({});
-      io.emit('room_list', rooms); // Update all clients
-    }
+    socket.emit('room_joined', roomName);
   });
 
+  // DELETE ROOM
   socket.on('delete_room', async (roomName) => {
     if (roomName === 'General') return; 
     
-    // Check permissions
     const room = await Room.findOne({ name: roomName });
     if (room && room.creatorId === socket.id) {
       await Room.deleteOne({ name: roomName });
-      const rooms = await Room.find({});
-      io.emit('room_list', rooms);
+      const updatedRooms = await Room.find({}, '-secretCode');
+      io.emit('room_list', updatedRooms);
       
-      // Move users to General
       const roomSockets = io.sockets.adapter.rooms.get(roomName);
       if (roomSockets) {
         for (const sId of roomSockets) {
@@ -190,6 +198,7 @@ io.on('connection', async (socket) => {
     }
   });
 
+  // MESSAGES
   socket.on('send_message', async (data) => {
     const message = new Message({
       sender: socket.username,
@@ -209,6 +218,7 @@ io.on('connection', async (socket) => {
     socket.emit('receive_message', msgPayload);
   });
 
+  // REACTIONS
   socket.on('react_to_message', async ({ messageId, reaction }) => {
     const message = await Message.findById(messageId);
     if (!message) return;
@@ -221,9 +231,7 @@ io.on('connection', async (socket) => {
   });
 
   socket.on('disconnect', async () => {
-    // Mark user offline in DB
     await User.findOneAndUpdate({ socketId: socket.id }, { isOnline: false, socketId: null });
-    
     io.to(socket.room).emit('user_list', getUsersInRoom(socket.room));
     io.to(socket.room).emit('receive_message', {
       sender: 'System', message: `${socket.username} has left the chat`, _id: new Date().toISOString(),
