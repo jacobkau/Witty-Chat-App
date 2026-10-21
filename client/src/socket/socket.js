@@ -60,12 +60,7 @@ export const useSocket = () => {
         await fetch(`${SOCKET_URL}/upload`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            file: base64String,
-            username: username,
-            socketId: socket.id,
-            room: currentRoom
-          }),
+          body: JSON.stringify({ file: base64String, username, socketId: socket.id, room: currentRoom }),
         });
       } catch (error) {
         console.error('Error uploading file:', error);
@@ -83,6 +78,11 @@ export const useSocket = () => {
 
   const deleteRoom = (roomName) => {
     socket.emit('delete_room', roomName);
+  };
+
+  // NEW: Delete Account entirely
+  const deleteAccount = () => {
+    socket.emit('request_account_deletion');
   };
 
   useEffect(() => {
@@ -118,32 +118,41 @@ export const useSocket = () => {
       setMessages([]);
     };
 
-    // Trigger EmailJS when room is created
     const onRoomCreatedSuccess = ({ roomName, secretCode, creatorEmail, creatorName }) => {
-      
       const templateParams = {
         from_name: 'WittyChat System',
         to_email: creatorEmail,
         subject: `Your Secret Code for Room: ${roomName}`,
         message: `Hello ${creatorName},\n\nYou have successfully created the room "${roomName}".\n\nYour secret code is: ${secretCode}\n\nShare this code with anyone you want to invite.`,
-        // You can also pass individual fields if your template needs them
-        room_name: roomName,
-        secret_code: secretCode,
       };
 
-      // Replace these with your actual EmailJS credentials
       const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID || 'YOUR_SERVICE_ID';
       const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID || 'YOUR_TEMPLATE_ID';
       const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY || 'YOUR_PUBLIC_KEY';
 
       emailjs.send(serviceId, templateId, templateParams, publicKey)
-        .then(() => {
-          alert(`Room created! The secret code has been emailed to ${creatorEmail}.`);
-        })
-        .catch((err) => {
-          console.error('EmailJS Error:', err);
-          alert(`Room created! However, we failed to send the email.\n\nYour secret code is: ${secretCode}\n\nPlease save it now.`);
-        });
+        .then(() => alert(`Room created! The secret code has been emailed to ${creatorEmail}.`))
+        .catch(() => alert(`Room created! Failed to send email.\n\nYour secret code is: ${secretCode}`));
+    };
+
+    // NEW: Handle Goodbye Email
+    const onAccountDeleted = ({ email, username }) => {
+      const templateParams = {
+        from_name: 'WittyChat System',
+        to_email: email,
+        subject: `Goodbye from WittyChat, ${username}`,
+        message: `Hello ${username},\n\nWe're sad to see you go. Your account has been successfully deleted from our database. Your chat messages will remain visible to others.\n\nThank you for using WittyChat.`,
+      };
+
+      const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID || 'YOUR_SERVICE_ID';
+      const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID || 'YOUR_TEMPLATE_ID';
+      const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY || 'YOUR_PUBLIC_KEY';
+
+      emailjs.send(serviceId, templateId, templateParams, publicKey)
+        .catch((err) => console.error('Failed to send goodbye email:', err));
+        
+      alert('Your account has been deleted. You have left WittyChat.');
+      window.location.reload(); 
     };
 
     socket.on('connect', onConnect);
@@ -159,6 +168,7 @@ export const useSocket = () => {
     socket.on('room_error', onRoomError);
     socket.on('room_joined', onRoomJoined);
     socket.on('room_created_success', onRoomCreatedSuccess);
+    socket.on('account_deleted_success', onAccountDeleted);
 
     return () => {
       socket.off('connect', onConnect);
@@ -174,13 +184,14 @@ export const useSocket = () => {
       socket.off('room_error', onRoomError);
       socket.off('room_joined', onRoomJoined);
       socket.off('room_created_success', onRoomCreatedSuccess);
+      socket.off('account_deleted_success', onAccountDeleted);
     };
   }, []);
 
   return {
     socket, isConnected, messages, users, typingUsers, connectionStatus, username, myEmail, myId,
     connect, disconnect, sendMessage, sendPrivateMessage, sendReaction, uploadFile,
-    currentRoom, availableRooms, joinRoom, createRoom, deleteRoom,
+    currentRoom, availableRooms, joinRoom, createRoom, deleteRoom, deleteAccount,
   };
 };
 
