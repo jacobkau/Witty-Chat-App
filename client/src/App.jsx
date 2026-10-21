@@ -8,12 +8,7 @@ const EMOJI_REACTIONS = ['👍', '❤️', '😂', '😮', '😢'];
 const ReactionPicker = ({ onSelect }) => (
   <div className="flex gap-1 mt-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-1 shadow-md">
     {EMOJI_REACTIONS.map((emoji) => (
-      <button
-        key={emoji}
-        type="button"
-        className="hover:scale-125 transition-transform text-lg px-1 leading-none"
-        onClick={() => onSelect(emoji)}
-      >
+      <button key={emoji} type="button" className="hover:scale-125 transition-transform text-lg px-1 leading-none" onClick={() => onSelect(emoji)}>
         {emoji}
       </button>
     ))}
@@ -27,18 +22,29 @@ const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen
     if (newRoom.trim()) {
       onCreate(newRoom.trim());
       setNewRoom('');
+    } else {
+      alert('Room name is required!');
+    }
+  };
+
+  const handleRoomClick = (room) => {
+    if (room.name === current) return;
+
+    if (room.creatorId === myId || room.name === 'General') {
+      onJoin(room.name);
+    } else {
+      const code = window.prompt(`Enter secret code for ${room.name}:`);
+      if (code) onJoin(room.name, code);
     }
   };
 
   return (
     <>
-      {isOpen && (
-        <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={onClose} />
-      )}
+      {isOpen && <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={onClose} />}
       <div className={`fixed md:static inset-y-0 left-0 z-50 w-60 bg-gray-800 text-gray-100 p-5 flex flex-col border-r border-gray-700 transform transition-transform duration-300 md:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex justify-between items-center mb-5 md:block">
           <h3 className="text-xl font-bold">Chat Rooms</h3>
-          <button onClick={onClose} className="md:hidden text-gray-300 hover:text-white p-1 rounded hover:bg-gray-700 transition" aria-label="Close rooms menu">
+          <button onClick={onClose} className="md:hidden text-gray-300 hover:text-white p-1 rounded hover:bg-gray-700">
             <X size={22} />
           </button>
         </div>
@@ -47,22 +53,12 @@ const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen
           {rooms.map((room) => (
             <li
               key={room.name}
-              onClick={() => onJoin(room.name)}
-              className={`flex justify-between items-center px-3 py-2 rounded cursor-pointer transition
-                ${room.name === current ? 'bg-blue-600 font-bold' : 'hover:bg-gray-700'}`}
+              onClick={() => handleRoomClick(room)}
+              className={`flex justify-between items-center px-3 py-2 rounded cursor-pointer transition ${room.name === current ? 'bg-blue-600 font-bold' : 'hover:bg-gray-700'}`}
             >
               <span className="truncate">{room.name}</span>
-              
               {room.name !== 'General' && room.creatorId === myId && (
-                <button
-                  type="button"
-                  title={`Delete ${room.name}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteRoom(room.name);
-                  }}
-                  className="text-red-400 hover:text-red-300 hover:bg-red-500/10 p-1 rounded transition flex-shrink-0"
-                >
+                <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteRoom(room.name); }} className="text-red-400 hover:text-red-300 p-1">
                   <Trash2 size={16} />
                 </button>
               )}
@@ -70,18 +66,19 @@ const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen
           ))}
         </ul>
 
-        <div className="flex mt-4 pt-4 border-t border-gray-600">
+        {/* Create Room Section (Simplified) */}
+        <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-gray-600">
           <input
             type="text"
             value={newRoom}
             onChange={(e) => setNewRoom(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-            placeholder="New room..."
-            className="flex-1 px-3 py-2 rounded-l bg-gray-700 text-white placeholder-gray-400 focus:outline-none text-sm"
+            placeholder="Room name..."
+            className="w-full px-3 py-2 rounded bg-gray-700 text-white placeholder-gray-400 focus:outline-none text-sm"
           />
-          <button type="button" onClick={handleCreate} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-r text-white font-bold transition">
-            +
+          <button onClick={handleCreate} className="w-full py-2 bg-blue-600 hover:bg-blue-700 rounded text-white font-bold transition mt-1">
+            Create Room
           </button>
+          <p className="text-xs text-gray-400 text-center mt-1">Secret code will be emailed to you automatically.</p>
         </div>
       </div>
     </>
@@ -132,7 +129,6 @@ function App() {
     currentRoom, availableRooms, joinRoom, createRoom, deleteRoom, myId
   } = useSocket();
 
-  // Added Login States
   const [loginName, setLoginName] = useState('');
   const [loginEmail, setLoginEmail] = useState('');
   const [secretCode, setSecretCode] = useState('');
@@ -191,7 +187,6 @@ function App() {
     }
   };
 
-  // Updated Login Handler
   const handleLogin = (e) => {
     e.preventDefault();
     if (loginName.trim() && loginEmail.trim() && secretCode.trim()) {
@@ -279,12 +274,12 @@ function App() {
         myId={myId}
         onClose={() => setIsMobileMenuOpen(false)}
         handleDeleteRoom={handleDeleteRoom}
-        onJoin={(room) => {
-          joinRoom(room);
+        onJoin={(room, code) => {
+          joinRoom(room, code);
           setIsMobileMenuOpen(false);
         }}
         onCreate={(room) => {
-          createRoom(room);
+          createRoom(room); // Server handles the code generation and email
           setIsMobileMenuOpen(false);
         }}
       />
@@ -296,8 +291,7 @@ function App() {
               <Menu size={22} />
             </button>
             <h2 className="text-lg md:text-xl font-bold truncate">
-              WittyChat:{' '}
-              <span className="text-blue-600 dark:text-blue-400">{currentRoom}</span>
+              WittyChat: <span className="text-blue-600 dark:text-blue-400">{currentRoom}</span>
             </h2>
           </div>
           <div className="flex items-center gap-2 md:gap-3">
@@ -357,7 +351,7 @@ function App() {
                       </div>
                       <div className={`px-3 py-2 rounded-2xl shadow-sm break-words ${isSent ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-bl-sm border border-gray-200 dark:border-gray-700'}`}>
                         {msg.message && <p className="whitespace-pre-wrap">{msg.message}</p>}
-                        {msg.fileUrl && (msg.fileType?.startsWith('image/') ? (
+                        {msg.fileUrl && (msg.fileType?.startsWith('image') || msg.fileType?.includes('jpg') || msg.fileType?.includes('png') ? (
                           <img src={msg.fileUrl} alt={msg.fileName} onClick={() => window.open(msg.fileUrl, '_blank')} className="max-w-full max-h-72 rounded-lg mt-1 cursor-pointer" />
                         ) : (
                           <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 mt-1 underline font-bold">
