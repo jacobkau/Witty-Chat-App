@@ -1,23 +1,39 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSocket } from './socket/socket';
-import { getStyles, lightColors, darkColors } from './styles';
 import { ThemeContext, useTheme } from './context/ThemeContext';
-import { useWindowSize } from './hooks/useWindowSize';
+import {
+  Trash2,
+  Paperclip,
+  Moon,
+  Sun,
+  Menu,
+  X,
+  Hand,
+  MessageCircle,
+} from 'lucide-react';
 
+// Emoji reactions are intentionally kept as Unicode — they are user-generated
+// content, and users expect their OS emoji rendering (Apple/Google/etc.).
 const EMOJI_REACTIONS = ['👍', '❤️', '😂', '😮', '😢'];
 
-// Reaction Picker Component
-const ReactionPicker = ({ onSelect, styles }) => (
-  <div style={styles.reactionPicker}>
-    {EMOJI_REACTIONS.map(emoji => (
-      <button key={emoji} style={styles.reactionButton} onClick={() => onSelect(emoji)}>
+// ---------- Reaction Picker ----------
+const ReactionPicker = ({ onSelect }) => (
+  <div className="flex gap-1 mt-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-1 shadow-md">
+    {EMOJI_REACTIONS.map((emoji) => (
+      <button
+        key={emoji}
+        type="button"
+        className="hover:scale-125 transition-transform text-lg px-1 leading-none"
+        onClick={() => onSelect(emoji)}
+      >
         {emoji}
       </button>
     ))}
   </div>
 );
 
-const RoomsPanel = ({ rooms, current, onJoin, onCreate, styles, handleDeleteRoom }) => {
+// ---------- Rooms Panel ----------
+const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen, onClose }) => {
   const [newRoom, setNewRoom] = useState('');
 
   const handleCreate = () => {
@@ -28,62 +44,114 @@ const RoomsPanel = ({ rooms, current, onJoin, onCreate, styles, handleDeleteRoom
   };
 
   return (
-    <div style={styles.roomsPanel}>
-      <h3 style={styles.roomsHeader}>Chat Rooms</h3>
-      <ul style={styles.roomsList}>
-        {rooms.map(room => (
-          <li
-            key={room}
-            style={room === current ? styles.activeRoom : styles.roomItem}
-            onClick={() => onJoin(room)}
-          >
-            # {room}
-            {room !== 'General' && (
-              <button
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#ff4d4f',
-                  fontSize: '1rem',
-                  cursor: 'pointer',
-                  float: 'right',
-                }}
-                title={`Delete ${room}`}
-                onClick={(e) => { e.stopPropagation(); handleDeleteRoom(room); }}
-              >
-                🗑️
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
-      <div style={styles.createRoomContainer}>
-        <input
-          type="text"
-          value={newRoom}
-          onChange={(e) => setNewRoom(e.target.value)}
-          placeholder="New room name..."
-          style={styles.createRoomInput}
+    <>
+      {/* Mobile backdrop */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={onClose}
         />
-        <button onClick={handleCreate} style={styles.createRoomButton}>+</button>
+      )}
+
+      <div
+        className={`fixed md:static inset-y-0 left-0 z-50 w-60 bg-gray-800 text-gray-100 p-5 flex flex-col border-r border-gray-700
+          transform transition-transform duration-300 md:translate-x-0
+          ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
+      >
+        <div className="flex justify-between items-center mb-5 md:block">
+          <h3 className="text-xl font-bold">Chat Rooms</h3>
+          <button
+            onClick={onClose}
+            className="md:hidden text-gray-300 hover:text-white p-1 rounded hover:bg-gray-700 transition"
+            aria-label="Close rooms menu"
+          >
+            <X size={22} />
+          </button>
+        </div>
+
+        <ul className="flex-1 overflow-y-auto space-y-1">
+          {rooms.map((room) => (
+            <li
+              key={room}
+              onClick={() => onJoin(room)}
+              className={`flex justify-between items-center px-3 py-2 rounded cursor-pointer transition
+                ${room === current ? 'bg-blue-600 font-bold' : 'hover:bg-gray-700'}`}
+            >
+              <span className="truncate"># {room}</span>
+              {room !== 'General' && (
+                <button
+                  type="button"
+                  title={`Delete ${room}`}
+                  aria-label={`Delete room ${room}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteRoom(room);
+                  }}
+                  className="text-red-400 hover:text-red-300 hover:bg-red-500/10 p-1 rounded transition flex-shrink-0"
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+
+        <div className="flex mt-4 pt-4 border-t border-gray-600">
+          <input
+            type="text"
+            value={newRoom}
+            onChange={(e) => setNewRoom(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+            placeholder="New room..."
+            className="flex-1 px-3 py-2 rounded-l bg-gray-700 text-white placeholder-gray-400 focus:outline-none text-sm"
+          />
+          <button
+            type="button"
+            onClick={handleCreate}
+            className="px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-r text-white font-bold transition"
+            aria-label="Create room"
+          >
+            +
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 
+// ---------- Helpers ----------
 function getInitials(name) {
   if (!name) return '?';
-  return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
-}
-function formatTime(ts) {
-  if (!ts) return '';
-  const d = new Date(ts);
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
 }
 
+function formatTime(ts) {
+  if (!ts) return '';
+  return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+// ---------- Theme Wrapper ----------
 function AppWrapper() {
-  const [theme, setTheme] = useState('light');
-  const toggleTheme = () => setTheme(t => (t === 'light' ? 'dark' : 'light'));
+  const [theme, setTheme] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('theme') || 'light';
+    }
+    return 'light';
+  });
+
+  const toggleTheme = () => {
+    setTheme((t) => {
+      const next = t === 'light' ? 'dark' : 'light';
+      localStorage.setItem('theme', next);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'dark') root.classList.add('dark');
+    else root.classList.remove('dark');
+  }, [theme]);
 
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme }}>
@@ -92,6 +160,7 @@ function AppWrapper() {
   );
 }
 
+// ---------- Main App ----------
 function App() {
   const {
     socket,
@@ -111,81 +180,56 @@ function App() {
     availableRooms,
     joinRoom,
     createRoom,
-    deleteRoom, // Make sure this is exposed from useSocket
+    deleteRoom,
   } = useSocket();
 
   const [loginInput, setLoginInput] = useState('');
   const [chatInput, setChatInput] = useState('');
   const [privateRecipient, setPrivateRecipient] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [showSearch, setShowSearch] = useState(false);
   const [activePicker, setActivePicker] = useState(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
   const audioRef = useRef(null);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
-  const [roomToDelete, setRoomToDelete] = useState(null);
+
   const { theme, toggleTheme } = useTheme();
-  const { width } = useWindowSize();
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const isMobile = width < 768;
-  
-  const styles = getStyles(theme);
-  const colors = theme === 'light' ? lightColors : darkColors;
 
-  const roomsPanelStyle = {
-    ...styles.roomsPanel,
-    ...(isMobile && {
-      position: 'absolute',
-      zIndex: 100,
-      transform: isMobileMenuOpen ? 'translateX(0)' : 'translateX(-100%)',
-      transition: 'transform 0.3s ease-in-out',
-      height: '100%',
-    })
-  };
-
-  const mainPanelStyle = {
-    ...styles.mainPanel,
-    ...(isMobile && { gridColumn: '1 / -1' })
-  };
-
-  const appContainerStyle = {
-    ...styles.appContainer,
-    gridTemplateColumns: isMobile ? '1fr' : '240px 1fr',
-  };
-
-  // Request notification permission
+  // Request notification permission once
   useEffect(() => {
     if ('Notification' in window) {
-      Notification.requestPermission().then(p => setNotificationsEnabled(p === 'granted'));
+      Notification.requestPermission().then((p) => setNotificationsEnabled(p === 'granted'));
     }
   }, []);
 
-  // Auto-scroll to new messages
+  // Auto-scroll on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Handle new messages and notifications
+  // Notify + play sound on new message
   useEffect(() => {
     if (messages.length) {
       const lastMessage = messages[messages.length - 1];
-      if (lastMessage.senderId !== socket.id && !lastMessage.system) {
-        setUnreadCount(prev => prev + 1);
+      if (lastMessage.senderId !== socket?.id && !lastMessage.system) {
         if (notificationsEnabled && document.hidden) {
           new Notification(`New message from ${lastMessage.sender}`, {
-            body: msg.fileUrl ? (msg.fileType?.startsWith('image/') ? 'Sent an image' : 'Sent a file') : msg.message,
+            body: lastMessage.fileUrl
+              ? lastMessage.fileType?.startsWith('image/')
+                ? 'Sent an image'
+                : 'Sent a file'
+              : lastMessage.message,
           });
         }
-        audioRef.current?.play().catch(console.error);
+        audioRef.current?.play().catch(() => {});
       }
     }
   }, [messages, notificationsEnabled, socket?.id]);
 
+  // Handle room deletion
   useEffect(() => {
+    if (!socket) return;
     const handleRoomDeleted = (deletedRoom) => {
       if (currentRoom === deletedRoom) {
         joinRoom('General');
@@ -197,26 +241,25 @@ function App() {
   }, [currentRoom, joinRoom, socket]);
 
   const handleDeleteRoom = (room) => {
-    if (window.confirm(`Are you sure you want to delete the room '${room}'? This will remove all its messages.`)) {
-      deleteRoom(room); // Use the function from the hook
+    if (
+      window.confirm(
+        `Are you sure you want to delete the room '${room}'? This will remove all its messages.`
+      )
+    ) {
+      deleteRoom(room);
     }
   };
 
   const handleLogin = (e) => {
     e.preventDefault();
-    if (loginInput.trim()) {
-      connect(loginInput);
-    }
+    if (loginInput.trim()) connect(loginInput);
   };
 
   const handleSend = (e) => {
     e.preventDefault();
     if (chatInput.trim()) {
-      if (privateRecipient) {
-        sendPrivateMessage(privateRecipient, chatInput);
-      } else {
-        sendMessage(chatInput);
-      }
+      if (privateRecipient) sendPrivateMessage(privateRecipient, chatInput);
+      else sendMessage(chatInput);
       setChatInput('');
     }
   };
@@ -226,241 +269,300 @@ function App() {
     setActivePicker(null);
   };
 
-  // Handle search
-  const handleSearch = () => {
-    if (searchQuery.trim()) {
-      setSearchResults(searchMessages(searchQuery));
-      setShowSearch(true);
-    } else {
-      setSearchResults([]);
-      setShowSearch(false);
-    }
-  };
-
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
-    if (file) {
-      uploadFile(file);
-    }
+    if (file) uploadFile(file);
   };
 
-  const triggerFileInput = () => {
-    fileInputRef.current?.click();
-  };
-
-  // Login UI
+  // ---------- LOGIN UI ----------
   if (!isConnected) {
     return (
-      <div className="login-container">
-        <div className="login-card">
-          <h1 className="login-title">Welcome to QuickChat!</h1>
-          <p className="login-subtitle">
-            A real-time chat application built with React and Socket.io.
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 p-4">
+        <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
+          <h1 className="text-3xl font-bold text-center text-blue-600 dark:text-blue-400 mb-2">
+            Welcome to QuickChat!
+          </h1>
+          <p className="text-center text-gray-600 dark:text-gray-400 mb-8">
+            A real-time chat app built with React &amp; Socket.io
           </p>
-          <form onSubmit={handleLogin} className="login-form">
+          <form onSubmit={handleLogin} className="space-y-4">
             <input
               type="text"
               placeholder="Enter your username"
               value={loginInput}
               onChange={(e) => setLoginInput(e.target.value)}
-              className="login-input"
+              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
               required
             />
-            <button type="submit" className="login-button">Join Chat</button>
+            <button
+              type="submit"
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition shadow-md hover:shadow-lg"
+            >
+              Join Chat
+            </button>
           </form>
-          <p className="login-status">Status: {connectionStatus}</p>
+          <p className="text-center text-gray-400 text-sm mt-6">
+            Status: {connectionStatus}
+          </p>
         </div>
       </div>
     );
   }
 
-  // Main Chat UI
+  // ---------- MAIN CHAT UI ----------
   return (
-    <>
-      <style>
-        {`
-          @keyframes popIn {
-            0% { transform: scale(0.5); opacity: 0; }
-            80% { transform: scale(1.1); }
-            100% { transform: scale(1); opacity: 1; }
-          }
-        `}
-      </style>
-      <div style={appContainerStyle}>
-        <RoomsPanel
-          rooms={availableRooms}
-          current={currentRoom}
-          styles={styles}
-          handleDeleteRoom={handleDeleteRoom}
-          onJoin={(room) => {
-            joinRoom(room);
-            if (isMobile) setIsMobileMenuOpen(false);
-          }}
-          onCreate={(room) => {
-            createRoom(room);
-            if (isMobile) setIsMobileMenuOpen(false);
-          }}
-        />
-        <div style={mainPanelStyle}>
-          <header style={styles.header}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-                {isMobile && (
-                  <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} style={styles.mobileMenuButton}>
-                    ☰
-                  </button>
-                )}
-                <h2 style={{ margin: 0 }}>QuickChat: #{currentRoom}</h2>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-                <span style={{ marginRight: '20px' }}>Welcome, {username}!</span>
-                <button onClick={toggleTheme} style={{
-                  background: 'none',
-                  border: `1px solid ${styles.border}`,
-                  borderRadius: '20px',
-                  padding: '5px 10px',
-                  cursor: 'pointer',
-                  color: styles.text,
-                }}>
-                  {theme === 'light' ? '🌙' : '☀️'}
-                </button>
-              </div>
-            </div>
-          </header>
-          <div style={styles.chatWindow}>
-            <div style={styles.usersContainer}>
-              <strong>Online Users ({users.length})</strong>
-              <ul style={styles.userList}>
-                {users.map((u) => (
-                  u.id !== socket.id && (
+    <div className="h-screen grid grid-cols-1 md:grid-cols-[240px_1fr] bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 overflow-hidden">
+      <RoomsPanel
+        rooms={availableRooms}
+        current={currentRoom}
+        isOpen={isMobileMenuOpen}
+        onClose={() => setIsMobileMenuOpen(false)}
+        handleDeleteRoom={handleDeleteRoom}
+        onJoin={(room) => {
+          joinRoom(room);
+          setIsMobileMenuOpen(false);
+        }}
+        onCreate={(room) => {
+          createRoom(room);
+          setIsMobileMenuOpen(false);
+        }}
+      />
+
+      <div className="flex flex-col h-screen min-w-0">
+        {/* Header */}
+        <header className="px-4 md:px-6 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-between gap-2">
+          <div className="flex items-center min-w-0">
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="md:hidden mr-3 text-gray-700 dark:text-gray-200 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+              aria-label="Open rooms menu"
+            >
+              <Menu size={22} />
+            </button>
+            <h2 className="text-lg md:text-xl font-bold truncate">
+              QuickChat:{' '}
+              <span className="text-blue-600 dark:text-blue-400">#{currentRoom}</span>
+            </h2>
+          </div>
+          <div className="flex items-center gap-2 md:gap-3">
+            <span className="hidden sm:inline-flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
+              <Hand size={14} className="text-yellow-500" />
+              {username}
+            </span>
+            <button
+              onClick={toggleTheme}
+              className="p-2 border border-gray-300 dark:border-gray-600 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+              aria-label="Toggle theme"
+            >
+              {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+            </button>
+          </div>
+        </header>
+
+        {/* Chat window — row: users sidebar + messages */}
+        <div className="flex flex-row flex-1 overflow-hidden">
+          {/* Users sidebar */}
+          <aside className="hidden sm:flex flex-col w-44 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 overflow-y-auto">
+            <strong className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
+              Online ({users.length})
+            </strong>
+            <ul className="space-y-1">
+              {users.map(
+                (u) =>
+                  u.id !== socket?.id && (
                     <li
                       key={u.id}
-                      onClick={() => setPrivateRecipient(privateRecipient === u.id ? '' : u.id)}
-                      style={{
-                        ...styles.userListItem,
-                        backgroundColor: u.id === privateRecipient ? colors.primary : 'transparent',
-                        color: u.id === privateRecipient ? colors.white : colors.text,
-                      }}
+                      onClick={() =>
+                        setPrivateRecipient(privateRecipient === u.id ? '' : u.id)
+                      }
+                      className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer text-sm transition
+                        ${u.id === privateRecipient
+                          ? 'bg-blue-600 text-white'
+                          : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
                     >
-                      {u.username}
+                      <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                      <span className="truncate">{u.username}</span>
                     </li>
                   )
-                ))}
-              </ul>
-            </div>
+              )}
+            </ul>
+          </aside>
 
-            <div style={styles.messagesContainer}>
-              <div style={styles.messagesList} ref={messagesEndRef}>
-                {messages.map((msg) => {
-                  const isSent = msg.senderId === socket.id;
-                  const isSystem = msg.sender === 'System';
+          {/* Messages area */}
+          <div className="flex flex-col flex-1 min-w-0">
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
+              {messages.map((msg) => {
+                const isSent = msg.senderId === socket?.id;
+                const isSystem = msg.sender === 'System';
+
+                if (isSystem) {
                   return (
-                    <div
-                      key={msg._id || msg.id}
-                      style={{
-                        ...styles.messageBubble,
-                        ...(isSent ? styles.bubbleSent : styles.bubbleReceived),
-                        ...(isSystem ? styles.bubbleSystem : {}),
-                        alignSelf: isSent ? 'flex-end' : 'flex-start',
-                        margin: '10px 0',
-                        display: 'flex',
-                        flexDirection: isSent ? 'row-reverse' : 'row',
-                        alignItems: 'flex-end',
-                        maxWidth: '80%',
-                      }}
-                    >
-                      {!isSystem && (
-                        <div style={styles.avatar} title={msg.sender}>
-                          {getInitials(msg.sender)}
-                        </div>
-                      )}
-                      <div style={{ flex: 1 }}>
-                        {!isSystem && (
-                          <div style={styles.senderName}>{isSent ? 'You' : msg.sender}</div>
-                        )}
-                        <div style={{
-                          ...styles.bubbleContent,
-                          background: isSent ? styles.bubbleSent.background : styles.bubbleReceived.background,
-                          color: isSent ? styles.bubbleSent.color : styles.bubbleReceived.color,
-                          borderBottomRightRadius: isSent ? '4px' : '18px',
-                          borderBottomLeftRadius: isSent ? '18px' : '4px',
-                        }}>
-                          {msg.message}
-                          {msg.fileUrl && (
-                            msg.fileType?.startsWith('image/') ? (
-                              <img src={msg.fileUrl} alt={msg.fileName} style={styles.imageAttachment} onClick={() => window.open(msg.fileUrl, '_blank')} />
-                            ) : (
-                              <div style={styles.fileAttachment}>
-                                <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" style={styles.fileAttachment_link}>
-                                  📎 {msg.fileName || 'Download File'}
-                                </a>
-                              </div>
-                            )
-                          )}
-                        </div>
-                        <div style={styles.bubbleMeta}>
-                          <span>{formatTime(msg.createdAt)}</span>
-                          {/* Reactions Display */}
-                          {msg.reactions && Object.keys(msg.reactions).length > 0 && (
-                            <span style={styles.reactionsContainer}>
-                              {Object.entries(msg.reactions).map(([reaction, reactors]) =>
-                                reactors.length > 0 && (
-                                  <span key={reaction} style={styles.reactionDisplay}>
-                                    {reaction} {reactors.length}
-                                  </span>
-                                )
-                              )}
-                            </span>
-                          )}
-                        </div>
-                        {/* Reaction Picker - only show for text messages */}
-                        {activePicker === msg._id && !msg.fileUrl && (
-                          <ReactionPicker
-                            styles={styles}
-                            onSelect={(emoji) => handleReaction(msg._id, emoji)}
-                          />
-                        )}
-                      </div>
+                    <div key={msg._id || msg.id} className="text-center my-3">
+                      <span className="inline-block bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 italic text-xs px-3 py-1 rounded-full">
+                        {msg.message}
+                      </span>
                     </div>
                   );
-                })}
-              </div>
+                }
 
-              <div style={styles.inputArea}>
-                {typingUsers.length > 0 && (
-                  <div style={{ color: colors.textSecondary, marginBottom: '5px', fontSize: '0.9em' }}>
-                    {typingUsers.join(', ')} is typing...
+                return (
+                  <div
+                    key={msg._id || msg.id}
+                    className={`flex items-end gap-2 max-w-[85%] md:max-w-[70%]
+                      ${isSent ? 'ml-auto flex-row-reverse' : 'mr-auto flex-row'}`}
+                  >
+                    <div
+                      className="w-9 h-9 rounded-full bg-gray-400 text-white flex items-center justify-center font-bold text-sm flex-shrink-0"
+                      title={msg.sender}
+                    >
+                      {getInitials(msg.sender)}
+                    </div>
+
+                    <div className="flex flex-col min-w-0">
+                      <div
+                        className={`text-xs font-bold mb-1 ${
+                          isSent
+                            ? 'text-right text-blue-600 dark:text-blue-400'
+                            : 'text-gray-500 dark:text-gray-400'
+                        }`}
+                      >
+                        {isSent ? 'You' : msg.sender}
+                      </div>
+
+                      <div
+                        className={`px-3 py-2 rounded-2xl shadow-sm break-words
+                          ${isSent
+                            ? 'bg-blue-600 text-white rounded-br-sm'
+                            : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-bl-sm border border-gray-200 dark:border-gray-700'}`}
+                      >
+                        {msg.message && (
+                          <p className="whitespace-pre-wrap">{msg.message}</p>
+                        )}
+
+                        {msg.fileUrl &&
+                          (msg.fileType?.startsWith('image/') ? (
+                            <img
+                              src={msg.fileUrl}
+                              alt={msg.fileName}
+                              onClick={() => window.open(msg.fileUrl, '_blank')}
+                              className="max-w-full max-h-72 rounded-lg mt-1 cursor-pointer"
+                            />
+                          ) : (
+                            <a
+                              href={msg.fileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 mt-1 underline font-bold"
+                            >
+                              <Paperclip size={14} />
+                              {msg.fileName || 'Download File'}
+                            </a>
+                          ))}
+                      </div>
+
+                      <div className="flex items-center gap-2 mt-1 text-xs text-gray-400 dark:text-gray-500">
+                        <span>{formatTime(msg.createdAt)}</span>
+                        {msg.reactions &&
+                          Object.entries(msg.reactions).map(
+                            ([reaction, reactors]) =>
+                              reactors.length > 0 && (
+                                <span
+                                  key={reaction}
+                                  className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-1.5 py-0.5 rounded-full"
+                                >
+                                  {reaction} {reactors.length}
+                                </span>
+                              )
+                          )}
+                      </div>
+
+                      {activePicker === msg._id && !msg.fileUrl && (
+                        <ReactionPicker
+                          onSelect={(emoji) => handleReaction(msg._id, emoji)}
+                        />
+                      )}
+                    </div>
                   </div>
-                )}
-                <form onSubmit={handleSend} style={{display: 'flex', flex: 1}}>
-                  <input
-                    type="text"
-                    placeholder={privateRecipient ? `Message ${users.find(u => u.id === privateRecipient)?.username}...` : 'Type a message...'}
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    style={styles.chatInput}
-                  />
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileSelect}
-                    style={{ display: 'none' }}
-                  />
-                  <button type="button" onClick={triggerFileInput} style={styles.fileButton}>
-                    📎
+                );
+              })}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Input area */}
+            <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 md:px-4 py-3">
+              {typingUsers.length > 0 && (
+                <div className="text-xs text-gray-500 dark:text-gray-400 italic mb-1">
+                  {typingUsers.join(', ')} is typing...
+                </div>
+              )}
+              {privateRecipient && (
+                <div className="text-xs text-blue-600 dark:text-blue-400 mb-1 flex items-center gap-1 flex-wrap">
+                  <MessageCircle size={12} />
+                  Private chat with{' '}
+                  <strong>
+                    {users.find((u) => u.id === privateRecipient)?.username}
+                  </strong>
+                  <button
+                    onClick={() => setPrivateRecipient('')}
+                    className="ml-2 text-red-500 hover:underline"
+                  >
+                    cancel
                   </button>
-                  <button type="submit" style={styles.sendButton}>Send</button>
-                </form>
-              </div>
+                </div>
+              )}
+              <form onSubmit={handleSend} className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder={
+                    privateRecipient
+                      ? `Message ${users.find((u) => u.id === privateRecipient)?.username}...`
+                      : 'Type a message...'
+                  }
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 transition text-sm"
+                />
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
+                  aria-label="Attach file"
+                >
+                  <Paperclip size={18} />
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-semibold text-sm transition"
+                >
+                  Send
+                </button>
+              </form>
             </div>
           </div>
-          <button onClick={disconnect} style={{...styles.sendButton, backgroundColor: colors.danger, marginTop: '10px' }}>
+        </div>
+
+        {/* Leave button */}
+        <div className="px-4 py-2 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
+          <button
+            onClick={disconnect}
+            className="w-full py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition"
+          >
             Leave Chat
           </button>
         </div>
-        <audio ref={audioRef} src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmGgU7k9n1unEiBC13yO/eizEIHWq+8+OWT" />
       </div>
-    </>
+
+      <audio
+        ref={audioRef}
+        src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmGgU7k9n1unEiBC13yO/eizEIHWq+8+OWT"
+      />
+    </div>
   );
 }
 
