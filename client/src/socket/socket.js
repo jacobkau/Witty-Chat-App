@@ -46,10 +46,8 @@ export const useSocket = () => {
     socket.emit('react_to_message', { messageId, reaction });
   };
 
-  // Updated to Base64 for Cloudinary
   const uploadFile = async (file) => {
     if (!username || !socket.id) return;
-
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onloadend = async () => {
@@ -75,8 +73,9 @@ export const useSocket = () => {
     socket.emit('join_room', { roomName, secretCode });
   };
 
-  const createRoom = (roomName, secretCode) => {
-    socket.emit('create_room', { roomName, secretCode });
+  
+  const createRoom = (roomName) => {
+    socket.emit('create_room', { roomName });
   };
 
   const deleteRoom = (roomName) => {
@@ -109,11 +108,16 @@ export const useSocket = () => {
 
     const onRoomList = (rooms) => setAvailableRooms(rooms);
     const onMessageHistory = (history) => setMessages(history);
-    
     const onRoomError = (msg) => alert(msg);
+    
     const onRoomJoined = (roomName) => {
       setCurrentRoom(roomName);
       setMessages([]);
+    };
+
+    // Handle email success message
+    const onRoomCreatedSuccess = ({ roomName, message }) => {
+      alert(message);
     };
 
     socket.on('connect', onConnect);
@@ -128,6 +132,7 @@ export const useSocket = () => {
     socket.on('message_history', onMessageHistory);
     socket.on('room_error', onRoomError);
     socket.on('room_joined', onRoomJoined);
+    socket.on('room_created_success', onRoomCreatedSuccess); 
 
     return () => {
       socket.off('connect', onConnect);
@@ -142,6 +147,7 @@ export const useSocket = () => {
       socket.off('message_history', onMessageHistory);
       socket.off('room_error', onRoomError);
       socket.off('room_joined', onRoomJoined);
+      socket.off('room_created_success', onRoomCreatedSuccess);
     };
   }, []);
 
