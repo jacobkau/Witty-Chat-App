@@ -15,7 +15,7 @@ const ReactionPicker = ({ onSelect }) => (
   </div>
 );
 
-const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen, onClose, myId }) => {
+const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen, onClose, myId, myEmail }) => {
   const [newRoom, setNewRoom] = useState('');
 
   const handleCreate = () => {
@@ -66,7 +66,6 @@ const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen
           ))}
         </ul>
 
-        {/* Create Room Section (Simplified) */}
         <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-gray-600">
           <input
             type="text"
@@ -78,7 +77,9 @@ const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen
           <button onClick={handleCreate} className="w-full py-2 bg-blue-600 hover:bg-blue-700 rounded text-white font-bold transition mt-1">
             Create Room
           </button>
-          <p className="text-xs text-gray-400 text-center mt-1">Secret code will be emailed to you automatically.</p>
+          <p className="text-xs text-gray-400 text-center mt-1">
+            Secret code will be emailed to <strong>{myEmail}</strong>.
+          </p>
         </div>
       </div>
     </>
@@ -126,7 +127,7 @@ function App() {
   const {
     socket, username, isConnected, messages, users, typingUsers, connectionStatus,
     connect, disconnect, sendMessage, sendPrivateMessage, sendReaction, uploadFile,
-    currentRoom, availableRooms, joinRoom, createRoom, deleteRoom, myId
+    currentRoom, availableRooms, joinRoom, createRoom, deleteRoom, myId, myEmail
   } = useSocket();
 
   const [loginName, setLoginName] = useState('');
@@ -272,6 +273,7 @@ function App() {
         current={currentRoom}
         isOpen={isMobileMenuOpen}
         myId={myId}
+        myEmail={myEmail}
         onClose={() => setIsMobileMenuOpen(false)}
         handleDeleteRoom={handleDeleteRoom}
         onJoin={(room, code) => {
@@ -279,7 +281,7 @@ function App() {
           setIsMobileMenuOpen(false);
         }}
         onCreate={(room) => {
-          createRoom(room); // Server handles the code generation and email
+          createRoom(room);
           setIsMobileMenuOpen(false);
         }}
       />
