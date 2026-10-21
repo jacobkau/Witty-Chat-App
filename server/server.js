@@ -38,7 +38,6 @@ const io = new Server(server, {
 app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173' }));
 app.use(express.json({ limit: '50mb' })); 
 
-// Helper to generate a strong code
 const generateStrongCode = () => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let result = '';
@@ -153,7 +152,6 @@ io.on('connection', async (socket) => {
     const updatedRooms = await Room.find({}, '-secretCode');
     io.emit('room_list', updatedRooms);
 
-    // Emit back to the creator so the frontend can trigger EmailJS
     socket.emit('room_created_success', { 
       roomName, 
       secretCode: newSecretCode, 
@@ -241,6 +239,18 @@ io.on('connection', async (socket) => {
     message.reactions.set(reaction, userList);
     await message.save();
     io.to(message.room).emit('message_updated', { messageId, reactions: Object.fromEntries(message.reactions) });
+  });
+
+  // NEW: Account Deletion (Leaves chats but deletes user)
+  socket.on('request_account_deletion', async () => {
+    try {
+      await User.findOneAndDelete({ socketId: socket.id });
+      socket.emit('account_deleted_success', { email: socket.email, username: socket.username });
+      socket.disconnect();
+    } catch (err) {
+      console.error('Error deleting account:', err);
+      socket.emit('room_error', 'Failed to delete account.');
+    }
   });
 
   socket.on('disconnect', async () => {
