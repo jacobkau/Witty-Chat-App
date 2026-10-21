@@ -379,4 +379,81 @@ function App() {
                       <div className={`text-xs font-bold mb-1 ${isSent ? 'text-right text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}`}>
                         {isSent ? 'You' : msg.sender}
                       </div>
-                      <div className={`px-3 py-2
+                      <div className={`px-3 py-2 rounded-2xl shadow-sm break-words ${isSent ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-bl-sm border border-gray-200 dark:border-gray-700'}`}>
+                        {msg.message && <p className="whitespace-pre-wrap">{msg.message}</p>}
+                        {msg.fileUrl && (msg.fileType?.startsWith('image') || msg.fileType?.includes('jpg') || msg.fileType?.includes('png') ? (
+                          <img src={msg.fileUrl} alt={msg.fileName} onClick={() => window.open(msg.fileUrl, '_blank')} className="max-w-full max-h-72 rounded-lg mt-1 cursor-pointer" />
+                        ) : (
+                          <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 mt-1 underline font-bold">
+                            <Paperclip size={14} />
+                            {msg.fileName || 'Download File'}
+                          </a>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1 text-xs text-gray-400 dark:text-gray-500">
+                        <span>{formatTime(msg.createdAt)}</span>
+                        {msg.reactions && Object.entries(msg.reactions).map(([reaction, reactors]) => reactors.length > 0 && (
+                          <span key={reaction} className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-1.5 py-0.5 rounded-full">
+                            {reaction} {reactors.length}
+                          </span>
+                        ))}
+                      </div>
+                      {activePicker === msg._id && !msg.fileUrl && (
+                        <ReactionPicker onSelect={(emoji) => handleReaction(msg._id, emoji)} />
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              <div ref={messagesEndRef} />
+            </div>
+
+            <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 md:px-4 py-3">
+              {typingUsers.length > 0 && (
+                <div className="text-xs text-gray-500 dark:text-gray-400 italic mb-1">
+                  {typingUsers.join(', ')} is typing...
+                </div>
+              )}
+              {privateRecipient && (
+                <div className="text-xs text-blue-600 dark:text-blue-400 mb-1 flex items-center gap-1 flex-wrap">
+                  <MessageCircle size={12} />
+                  Private chat with <strong>{users.find((u) => u.id === privateRecipient)?.username}</strong>
+                  <button onClick={() => setPrivateRecipient('')} className="ml-2 text-red-500 hover:underline">cancel</button>
+                </div>
+              )}
+              <form onSubmit={handleSend} className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder={privateRecipient ? `Message ${users.find((u) => u.id === privateRecipient)?.username}...` : 'Type a message...'}
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 transition text-sm"
+                />
+                <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" />
+                <button type="button" onClick={() => fileInputRef.current?.click()} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
+                  <Paperclip size={18} />
+                </button>
+                <button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-semibold text-sm transition">
+                  Send
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        {/* New Footer Actions */}
+        <div className="px-4 py-3 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex gap-2">
+          <button onClick={handleLeaveRoom} className="flex-1 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-semibold transition flex items-center justify-center gap-2">
+            <LogOut size={16} /> Leave Room
+          </button>
+          <button onClick={handleDeleteAccount} className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition flex items-center justify-center gap-2">
+            <UserX size={16} /> Leave App & Delete Account
+          </button>
+        </div>
+      </div>
+      <audio ref={audioRef} src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmGgU7k9n1unEiBC13yO/eizEIHWq+8+OWT" />
+    </div>
+  );
+}
+
+export default AppWrapper;
