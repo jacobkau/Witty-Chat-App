@@ -1,5 +1,6 @@
 import { io } from 'socket.io-client';
 import { useEffect, useState } from 'react';
+import emailjs from '@emailjs/browser';
 
 const SOCKET_URL = (import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000').replace(/\/$/, '');
 
@@ -17,14 +18,16 @@ export const useSocket = () => {
   const [typingUsers, setTypingUsers] = useState([]);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
   const [username, setUsername] = useState('');
+  const [myEmail, setMyEmail] = useState('');
   const [currentRoom, setCurrentRoom] = useState('General');
   const [availableRooms, setAvailableRooms] = useState([]);
   const [myId, setMyId] = useState('');
 
-  const connect = (username, email, secretCode) => {
-    setUsername(username);
+  const connect = (user, email, secretCode) => {
+    setUsername(user);
+    setMyEmail(email);
     setConnectionStatus('connecting');
-    socket.auth = { username, email, secretCode };
+    socket.auth = { username: user, email, secretCode };
     socket.connect();
   };
 
@@ -32,6 +35,7 @@ export const useSocket = () => {
     socket.disconnect();
     setIsConnected(false);
     setUsername('');
+    setMyEmail('');
   };
 
   const sendMessage = (message) => {
@@ -73,7 +77,6 @@ export const useSocket = () => {
     socket.emit('join_room', { roomName, secretCode });
   };
 
-  
   const createRoom = (roomName) => {
     socket.emit('create_room', { roomName });
   };
@@ -115,9 +118,32 @@ export const useSocket = () => {
       setMessages([]);
     };
 
-    // Handle email success message
-    const onRoomCreatedSuccess = ({ roomName, message }) => {
-      alert(message);
+    // Trigger EmailJS when room is created
+    const onRoomCreatedSuccess = ({ roomName, secretCode, creatorEmail, creatorName }) => {
+      
+      const templateParams = {
+        from_name: 'WittyChat System',
+        to_email: creatorEmail,
+        subject: `Your Secret Code for Room: ${roomName}`,
+        message: `Hello ${creatorName},\n\nYou have successfully created the room "${roomName}".\n\nYour secret code is: ${secretCode}\n\nShare this code with anyone you want to invite.`,
+        // You can also pass individual fields if your template needs them
+        room_name: roomName,
+        secret_code: secretCode,
+      };
+
+      // Replace these with your actual EmailJS credentials
+      const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID || 'YOUR_SERVICE_ID';
+      const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID || 'YOUR_TEMPLATE_ID';
+      const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY || 'YOUR_PUBLIC_KEY';
+
+      emailjs.send(serviceId, templateId, templateParams, publicKey)
+        .then(() => {
+          alert(`Room created! The secret code has been emailed to ${creatorEmail}.`);
+        })
+        .catch((err) => {
+          console.error('EmailJS Error:', err);
+          alert(`Room created! However, we failed to send the email.\n\nYour secret code is: ${secretCode}\n\nPlease save it now.`);
+        });
     };
 
     socket.on('connect', onConnect);
@@ -132,7 +158,7 @@ export const useSocket = () => {
     socket.on('message_history', onMessageHistory);
     socket.on('room_error', onRoomError);
     socket.on('room_joined', onRoomJoined);
-    socket.on('room_created_success', onRoomCreatedSuccess); 
+    socket.on('room_created_success', onRoomCreatedSuccess);
 
     return () => {
       socket.off('connect', onConnect);
@@ -152,7 +178,7 @@ export const useSocket = () => {
   }, []);
 
   return {
-    socket, isConnected, messages, users, typingUsers, connectionStatus, username, myId,
+    socket, isConnected, messages, users, typingUsers, connectionStatus, username, myEmail, myId,
     connect, disconnect, sendMessage, sendPrivateMessage, sendReaction, uploadFile,
     currentRoom, availableRooms, joinRoom, createRoom, deleteRoom,
   };
