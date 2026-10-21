@@ -36,13 +36,23 @@ const io = new Server(server, {
 });
 
 app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173' }));
-app.use(express.json({ limit: '50mb' })); // Increased limit for base64 images
+app.use(express.json({ limit: '50mb' })); 
 
-// --- Socket Authentication (Unique Email & Secret App Code) ---
+// Helper to generate a strong code
+const generateStrongCode = () => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let result = '';
+  for (let i = 0; i < 8; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+    if (i === 3) result += '-'; 
+  }
+  return result;
+};
+
+// --- Socket Authentication ---
 io.use(async (socket, next) => {
   const { username, email, secretCode } = socket.handshake.auth;
 
-  // App-level secret code check
   if (secretCode !== process.env.CHAT_SECRET_CODE) {
     return next(new Error('Invalid Secret Membership Code.'));
   }
@@ -78,11 +88,7 @@ io.use(async (socket, next) => {
 app.post('/upload', async (req, res) => {
   try {
     const { file, username, socketId, room } = req.body;
-    
-    // Upload base64 string to Cloudinary
-    const result = await cloudinary.uploader.upload(file, {
-      folder: 'witty_chat_uploads',
-    });
+    const result = await cloudinary.uploader.upload(file, { folder: 'witty_chat_uploads' });
 
     const message = new Message({
       sender: username,
@@ -102,7 +108,6 @@ app.post('/upload', async (req, res) => {
   }
 });
 
-// --- Helpers ---
 const getUsersInRoom = (room) => {
   const roomSockets = io.sockets.adapter.rooms.get(room);
   if (!roomSockets) return [];
@@ -116,7 +121,6 @@ const getUsersInRoom = (room) => {
 io.on('connection', async (socket) => {
   socket.join(socket.room);
 
-  // Send current rooms (excluding secret codes for privacy)
   const rooms = await Room.find({}, '-secretCode');
   socket.emit('room_list', rooms);
   io.to(socket.room).emit('user_list', getUsersInRoom(socket.room));
@@ -129,23 +133,33 @@ io.on('connection', async (socket) => {
   });
 
   // CREATE ROOM
-  socket.on('create_room', async ({ roomName, secretCode }) => {
-    if (!secretCode || secretCode.trim() === '') {
-      return socket.emit('room_error', 'Room must have a secret code.');
+  socket.on('create_room', async ({ roomName }) => {
+    if (!roomName || roomName.trim() === '') {
+      return socket.emit('room_error', 'Room name is required.');
     }
 
     const exists = await Room.findOne({ name: roomName });
     if (exists) return socket.emit('room_error', 'Room name already taken.');
 
+    const newSecretCode = generateStrongCode();
+
     await Room.create({
       name: roomName,
       creatorId: socket.id,
       creatorName: socket.username,
-      secretCode: secretCode,
+      secretCode: newSecretCode,
     });
 
     const updatedRooms = await Room.find({}, '-secretCode');
     io.emit('room_list', updatedRooms);
+
+    // Emit back to the creator so the frontend can trigger EmailJS
+    socket.emit('room_created_success', { 
+      roomName, 
+      secretCode: newSecretCode, 
+      creatorEmail: socket.email,
+      creatorName: socket.username
+    });
   });
 
   // JOIN ROOM
@@ -154,7 +168,6 @@ io.on('connection', async (socket) => {
     
     if (!room) return socket.emit('room_error', 'Room not found.');
     
-    // Allow creator to bypass code, or verify the code
     if (room.creatorId !== socket.id && room.secretCode !== secretCode) {
       return socket.emit('room_error', 'Incorrect secret code for this room.');
     }
