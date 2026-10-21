@@ -16,7 +16,8 @@
     "react-hot-toast": "^2.4.1",
     "lucide-react": "^0.294.0",
     "tailwindcss": "^4.0.0",
-    "@tailwindcss/vite": "^4.0.0"
+    "@tailwindcss/vite": "^4.0.0",
+     "@emailjs/browser": "^4.3.3", 
   },
   "devDependencies": {
     "@types/react": "^18.2.37",
