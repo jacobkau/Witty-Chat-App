@@ -8,7 +8,18 @@ import {
 } from 'lucide-react';
 
 const EMOJI_REACTIONS = ['👍', '❤️', '😂', '😮', '😢'];
-
+useEffect(() => {
+  const handlePageShow = (event) => {
+    if (event.persisted) {
+      if (!socket.connected) {
+        socket.connect();
+      }
+    }
+  };
+  
+  window.addEventListener('pageshow', handlePageShow);
+  return () => window.removeEventListener('pageshow', handlePageShow);
+}, []);
 const ReactionPicker = ({ onSelect }) => (
   <div className="flex gap-1 mt-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-1 shadow-md">
     {EMOJI_REACTIONS.map((emoji) => (
