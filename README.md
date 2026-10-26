@@ -131,7 +131,7 @@ The frontend will run on `http://localhost:5173`.
 This project is licensed under the MIT License.
 
 ## Live System
-[https://witty-chat-app.vercel.app/](https://witty-chat-app.vercel.app/)
+[live mode](https://witty-chat-app.vercel.app/)
 
 ### Build by [Witty Highbrow Technologies](https://witty-highbrow-technologies.onrender.com)
 Contact us: [wittyhighbrowtechnologies@gmail.com](wittyhighbrowtechnologies@gmail.com)
