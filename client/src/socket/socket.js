@@ -73,7 +73,13 @@ export const useSocket = () => {
     };
   };
 
-  const joinRoom = (roomName, secretCode = '') => socket.emit('join_room', { roomName, secretCode });
+  const joinRoom = (roomName, secretCode = '') => {
+    socket.emit('join_room', { roomName, secretCode });
+    setCurrentRoom(roomName);
+    // REMOVED: setMessages([]); 
+    // We no longer clear messages here. App.jsx filters them based on the active room/DM.
+  };
+
   const createRoom = (roomName) => socket.emit('create_room', { roomName });
   const deleteRoom = (roomName) => socket.emit('delete_room', roomName);
   const deleteAccount = () => socket.emit('request_account_deletion');
@@ -115,13 +121,27 @@ export const useSocket = () => {
     };
 
     const onChatCleared = () => {
+      // This clears only private messages from the local state
+      // If you want to clear everything, just setMessages([]);
       setMessages(prev => prev.filter(msg => !msg.isPrivate));
     };
 
     const onRoomList = (rooms) => setAvailableRooms(rooms);
-    const onMessageHistory = (history) => setMessages(history);
+    const onMessageHistory = (history) => {
+      // 🚨 FIX: Instead of replacing all messages, we merge the history
+      // This prevents room history from wiping out your private chats
+      setMessages(prev => {
+        const existingIds = new Set(prev.map(m => m._id || m.id));
+        const newMessages = history.filter(m => !existingIds.has(m._id || m.id));
+        return [...newMessages, ...prev];
+      });
+    };
+
     const onRoomError = (msg) => alert(msg);
-    const onRoomJoined = (roomName) => { setCurrentRoom(roomName); setMessages([]); };
+    const onRoomJoined = (roomName) => { 
+      setCurrentRoom(roomName); 
+      // REMOVED: setMessages([]); 
+    };
 
     const onRoomCreatedSuccess = ({ roomName, secretCode, creatorEmail, creatorName }) => {
       const templateParams = {
