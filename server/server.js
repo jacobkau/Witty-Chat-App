@@ -114,8 +114,12 @@ app.post('/upload', async (req, res) => {
 
     await message.save();
 
+    // Find recipient's active socket ID to emit the file
     if (isPrivate && to) {
-      io.to(to).emit('receive_message', message.toObject());
+      const recipientUser = await User.findOne({ email: to });
+      if (recipientUser && recipientUser.socketId) {
+        io.to(recipientUser.socketId).emit('receive_message', message.toObject());
+      }
       io.to(socketId).emit('receive_message', message.toObject());
     } else {
       io.to(room).emit('receive_message', message.toObject());
@@ -124,10 +128,7 @@ app.post('/upload', async (req, res) => {
     res.status(201).json({ message: 'File uploaded successfully', data: message.toObject() });
   } catch (error) {
     console.error("Cloudinary Upload Error:", error);
-    res.status(500).json({ 
-      error: error.message || "Internal Server Error during upload",
-      details: error
-    });
+    res.status(500).json({ error: error.message || "Internal Server Error during upload" });
   }
 });
 
@@ -136,7 +137,7 @@ const getUsersInRoom = (room) => {
   if (!roomSockets) return [];
   return Array.from(roomSockets).map(socketId => {
     const userSocket = io.sockets.sockets.get(socketId);
-    return { id: userSocket.id, username: userSocket.username };
+    return { id: userSocket.id, username: userSocket.username, email: userSocket.email };
   });
 };
 
@@ -147,18 +148,16 @@ io.on('connection', async (socket) => {
   socket.emit('room_list', rooms);
   io.to(socket.room).emit('user_list', getUsersInRoom(socket.room));
 
-  // 🚨 FIX: Fetch BOTH public room history AND all private messages involving this user
   const publicHistory = await Message.find({ room: socket.room, isPrivate: false }).sort({ createdAt: -1 }).limit(50).lean();
   
   const privateHistory = await Message.find({ 
     isPrivate: true, 
     $or: [
       { senderEmail: socket.email },
-      { to: socket.id } // Note: 'to' is currently the socketId of the recipient
+      { to: socket.email } 
     ] 
   }).sort({ createdAt: -1 }).limit(100).lean();
 
-  // Send combined history to the client
   const combinedHistory = [...publicHistory, ...privateHistory].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
   socket.emit('message_history', combinedHistory);
 
@@ -234,19 +233,24 @@ io.on('connection', async (socket) => {
     io.to(socket.room).emit('receive_message', message.toObject());
   });
 
-  socket.on('private_message', async ({ to, message }) => {
+  socket.on('private_message', async ({ toEmail, message }) => {
+    // Save with recipient's EMAIL in the 'to' field
     const msgPayload = new Message({
       sender: socket.username,
       senderId: socket.id,
       senderEmail: socket.email,
       message,
       isPrivate: true,
-      to,
+      to: toEmail, 
       room: socket.room,
     });
     await msgPayload.save();
 
-    socket.to(to).emit('receive_message', msgPayload.toObject());
+    // Find recipient's socket ID and emit
+    const recipientUser = await User.findOne({ email: toEmail });
+    if (recipientUser && recipientUser.socketId) {
+      io.to(recipientUser.socketId).emit('receive_message', msgPayload.toObject());
+    }
     socket.emit('receive_message', msgPayload.toObject());
   });
 
@@ -259,11 +263,15 @@ io.on('connection', async (socket) => {
     message.reactions.set(reaction, userList);
     await message.save();
 
-    if (message.isPrivate && message.to) {
-      io.to(message.to).emit('message_updated', { messageId, reactions: Object.fromEntries(message.reactions) });
-      io.to(message.senderId).emit('message_updated', { messageId, reactions: Object.fromEntries(message.reactions) });
+    // Find both sender and recipient to update
+    const recipientUser = message.isPrivate ? await User.findOne({ email: message.to }) : null;
+    const payload = { messageId, reactions: Object.fromEntries(message.reactions) };
+
+    if (message.isPrivate) {
+      if (recipientUser && recipientUser.socketId) io.to(recipientUser.socketId).emit('message_updated', payload);
+      io.to(message.senderId).emit('message_updated', payload);
     } else {
-      io.to(message.room).emit('message_updated', { messageId, reactions: Object.fromEntries(message.reactions) });
+      io.to(message.room).emit('message_updated', payload);
     }
   });
 
@@ -272,12 +280,15 @@ io.on('connection', async (socket) => {
     if (!message) return;
     message.isPinned = !message.isPinned;
     await message.save();
+    
+    const recipientUser = message.isPrivate ? await User.findOne({ email: message.to }) : null;
+    const payload = { messageId, isPinned: message.isPinned };
 
-    if (message.isPrivate && message.to) {
-      io.to(message.to).emit('message_updated', { messageId, isPinned: message.isPinned });
-      io.to(message.senderId).emit('message_updated', { messageId, isPinned: message.isPinned });
+    if (message.isPrivate) {
+      if (recipientUser && recipientUser.socketId) io.to(recipientUser.socketId).emit('message_updated', payload);
+      io.to(message.senderId).emit('message_updated', payload);
     } else {
-      io.to(message.room).emit('message_updated', { messageId, isPinned: message.isPinned });
+      io.to(message.room).emit('message_updated', payload);
     }
   });
 
@@ -286,12 +297,15 @@ io.on('connection', async (socket) => {
     if (!message) return;
     message.isStarred = !message.isStarred;
     await message.save();
+    
+    const recipientUser = message.isPrivate ? await User.findOne({ email: message.to }) : null;
+    const payload = { messageId, isStarred: message.isStarred };
 
-    if (message.isPrivate && message.to) {
-      io.to(message.to).emit('message_updated', { messageId, isStarred: message.isStarred });
-      io.to(message.senderId).emit('message_updated', { messageId, isStarred: message.isStarred });
+    if (message.isPrivate) {
+      if (recipientUser && recipientUser.socketId) io.to(recipientUser.socketId).emit('message_updated', payload);
+      io.to(message.senderId).emit('message_updated', payload);
     } else {
-      io.to(message.room).emit('message_updated', { messageId, isStarred: message.isStarred });
+      io.to(message.room).emit('message_updated', payload);
     }
   });
 
@@ -304,11 +318,14 @@ io.on('connection', async (socket) => {
       await message.save();
     }
 
-    if (message.isPrivate && message.to) {
-      io.to(message.to).emit('message_updated', { messageId, deletedFor: message.deletedFor });
-      io.to(message.senderId).emit('message_updated', { messageId, deletedFor: message.deletedFor });
+    const recipientUser = message.isPrivate ? await User.findOne({ email: message.to }) : null;
+    const payload = { messageId, deletedFor: message.deletedFor };
+
+    if (message.isPrivate) {
+      if (recipientUser && recipientUser.socketId) io.to(recipientUser.socketId).emit('message_updated', payload);
+      io.to(message.senderId).emit('message_updated', payload);
     } else {
-      io.to(message.room).emit('message_updated', { messageId, deletedFor: message.deletedFor });
+      io.to(message.room).emit('message_updated', payload);
     }
   });
 
