@@ -91,25 +91,26 @@ function getInitials(name) {
   return name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
 }
 
-// NEW: Advanced Date/Time Formatter
+// Format time for individual messages
 function formatTime(ts) {
   if (!ts) return '';
+  return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+// Format the Date Divider (Today, Yesterday, etc.)
+function formatDateDivider(ts) {
   const d = new Date(ts);
   const now = new Date();
   
   const isToday = d.toDateString() === now.toDateString();
-  
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
   const isYesterday = d.toDateString() === yesterday.toDateString();
 
-  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-  if (isToday) return `Today at ${time}`;
-  if (isYesterday) return `Yesterday at ${time}`;
+  if (isToday) return 'TODAY';
+  if (isYesterday) return 'YESTERDAY';
   
-  // If older than yesterday, show the date
-  return `${d.toLocaleDateString()} at ${time}`;
+  return d.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 function AppWrapper() {
@@ -230,14 +231,12 @@ function App() {
     if (file) uploadFile(file);
   };
 
-  // NEW: Handle Account Deletion (Leave App)
   const handleDeleteAccount = () => {
     if (window.confirm("Are you sure you want to leave WittyChat? Your account and email will be deleted, but your messages will remain.")) {
       deleteAccount();
     }
   };
 
-  // NEW: Handle Leave Room (Just go back to General)
   const handleLeaveRoom = () => {
     joinRoom('General');
   };
@@ -292,6 +291,9 @@ function App() {
       </div>
     );
   }
+
+  // Variable to track the last rendered date so we only show the divider once per day
+  let lastRenderedDate = null;
 
   // ---------- MAIN CHAT UI ----------
   return (
@@ -356,53 +358,80 @@ function App() {
 
           <div className="flex flex-col flex-1 min-w-0">
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
+              
               {messages.map((msg) => {
                 const isSent = msg.senderId === socket?.id;
                 const isSystem = msg.sender === 'System';
+                
+                // Date logic for dividers
+                const msgDate = new Date(msg.createdAt || msg.id).toDateString();
+                const showDateDivider = msgDate !== lastRenderedDate;
+                if (showDateDivider) lastRenderedDate = msgDate;
 
                 if (isSystem) {
                   return (
-                    <div key={msg._id || msg.id} className="text-center my-3">
-                      <span className="inline-block bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 italic text-xs px-3 py-1 rounded-full">
-                        {msg.message}
-                      </span>
-                    </div>
+                    <React.Fragment key={msg._id || msg.id}>
+                      {showDateDivider && (
+                        <div className="flex justify-center my-4">
+                          <span className="bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-300 text-xs px-3 py-1 rounded-full uppercase tracking-wider">
+                            {formatDateDivider(msg.createdAt || msg.id)}
+                          </span>
+                        </div>
+                      )}
+                      <div className="text-center my-3">
+                        <span className="inline-block bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 italic text-xs px-3 py-1 rounded-full">
+                          {msg.message}
+                        </span>
+                      </div>
+                    </React.Fragment>
                   );
                 }
 
                 return (
-                  <div key={msg._id || msg.id} className={`flex items-end gap-2 max-w-[85%] md:max-w-[70%] ${isSent ? 'ml-auto flex-row-reverse' : 'mr-auto flex-row'}`}>
-                    <div className="w-9 h-9 rounded-full bg-gray-400 text-white flex items-center justify-center font-bold text-sm flex-shrink-0" title={msg.sender}>
-                      {getInitials(msg.sender)}
+                  <React.Fragment key={msg._id || msg.id}>
+                    {/* Date Divider */}
+                    {showDateDivider && (
+                      <div className="flex justify-center my-6 sticky top-2 z-10">
+                        <span className="bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-300 text-xs px-4 py-1 rounded-full font-semibold uppercase shadow-sm">
+                          {formatDateDivider(msg.createdAt || msg.id)}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Message Bubble */}
+                    <div className={`flex items-end gap-2 max-w-[85%] md:max-w-[70%] ${isSent ? 'self-end flex-row-reverse' : 'self-start flex-row'}`}>
+                      <div className="w-9 h-9 rounded-full bg-gray-400 text-white flex items-center justify-center font-bold text-sm flex-shrink-0" title={msg.sender}>
+                        {getInitials(msg.sender)}
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <div className={`text-xs font-bold mb-1 ${isSent ? 'text-right text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                          {isSent ? 'You' : msg.sender}
+                        </div>
+                        <div className={`px-3 py-2 rounded-2xl shadow-sm break-words ${isSent ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-bl-sm border border-gray-200 dark:border-gray-700'}`}>
+                          {msg.message && <p className="whitespace-pre-wrap">{msg.message}</p>}
+                          {msg.fileUrl && (msg.fileType?.startsWith('image') || msg.fileType?.includes('jpg') || msg.fileType?.includes('png') ? (
+                            <img src={msg.fileUrl} alt={msg.fileName} onClick={() => window.open(msg.fileUrl, '_blank')} className="max-w-full max-h-72 rounded-lg mt-1 cursor-pointer" />
+                          ) : (
+                            <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 mt-1 underline font-bold">
+                              <Paperclip size={14} />
+                              {msg.fileName || 'Download File'}
+                            </a>
+                          ))}
+                        </div>
+                        <div className={`flex items-center gap-2 mt-1 text-xs text-gray-400 dark:text-gray-500 ${isSent ? 'justify-end' : 'justify-start'}`}>
+                          <span>{formatTime(msg.createdAt)}</span>
+                          {msg.reactions && Object.entries(msg.reactions).map(([reaction, reactors]) => reactors.length > 0 && (
+                            <span key={reaction} className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-1.5 py-0.5 rounded-full">
+                              {reaction} {reactors.length}
+                            </span>
+                          ))}
+                        </div>
+                        {activePicker === msg._id && !msg.fileUrl && (
+                          <ReactionPicker onSelect={(emoji) => handleReaction(msg._id, emoji)} />
+                        )}
+                      </div>
                     </div>
-                    <div className="flex flex-col min-w-0">
-                      <div className={`text-xs font-bold mb-1 ${isSent ? 'text-right text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}`}>
-                        {isSent ? 'You' : msg.sender}
-                      </div>
-                      <div className={`px-3 py-2 rounded-2xl shadow-sm break-words ${isSent ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-bl-sm border border-gray-200 dark:border-gray-700'}`}>
-                        {msg.message && <p className="whitespace-pre-wrap">{msg.message}</p>}
-                        {msg.fileUrl && (msg.fileType?.startsWith('image') || msg.fileType?.includes('jpg') || msg.fileType?.includes('png') ? (
-                          <img src={msg.fileUrl} alt={msg.fileName} onClick={() => window.open(msg.fileUrl, '_blank')} className="max-w-full max-h-72 rounded-lg mt-1 cursor-pointer" />
-                        ) : (
-                          <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 mt-1 underline font-bold">
-                            <Paperclip size={14} />
-                            {msg.fileName || 'Download File'}
-                          </a>
-                        ))}
-                      </div>
-                      <div className="flex items-center gap-2 mt-1 text-xs text-gray-400 dark:text-gray-500">
-                        <span>{formatTime(msg.createdAt)}</span>
-                        {msg.reactions && Object.entries(msg.reactions).map(([reaction, reactors]) => reactors.length > 0 && (
-                          <span key={reaction} className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-1.5 py-0.5 rounded-full">
-                            {reaction} {reactors.length}
-                          </span>
-                        ))}
-                      </div>
-                      {activePicker === msg._id && !msg.fileUrl && (
-                        <ReactionPicker onSelect={(emoji) => handleReaction(msg._id, emoji)} />
-                      )}
-                    </div>
-                  </div>
+                  </React.Fragment>
                 );
               })}
               <div ref={messagesEndRef} />
@@ -441,7 +470,6 @@ function App() {
           </div>
         </div>
 
-        {/* New Footer Actions */}
         <div className="px-4 py-3 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex gap-2">
           <button onClick={handleLeaveRoom} className="flex-1 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-semibold transition flex items-center justify-center gap-2">
             <LogOut size={16} /> Leave Room
