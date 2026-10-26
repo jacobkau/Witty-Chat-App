@@ -130,6 +130,7 @@ app.post('/upload', async (req, res) => {
     });
   }
 });
+
 const getUsersInRoom = (room) => {
   const roomSockets = io.sockets.adapter.rooms.get(room);
   if (!roomSockets) return [];
@@ -146,8 +147,20 @@ io.on('connection', async (socket) => {
   socket.emit('room_list', rooms);
   io.to(socket.room).emit('user_list', getUsersInRoom(socket.room));
 
-  const history = await Message.find({ room: socket.room, isPrivate: false }).sort({ createdAt: -1 }).limit(50).lean();
-  socket.emit('message_history', history.reverse());
+  // 🚨 FIX: Fetch BOTH public room history AND all private messages involving this user
+  const publicHistory = await Message.find({ room: socket.room, isPrivate: false }).sort({ createdAt: -1 }).limit(50).lean();
+  
+  const privateHistory = await Message.find({ 
+    isPrivate: true, 
+    $or: [
+      { senderEmail: socket.email },
+      { to: socket.id } // Note: 'to' is currently the socketId of the recipient
+    ] 
+  }).sort({ createdAt: -1 }).limit(100).lean();
+
+  // Send combined history to the client
+  const combinedHistory = [...publicHistory, ...privateHistory].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  socket.emit('message_history', combinedHistory);
 
   socket.broadcast.to(socket.room).emit('receive_message', {
     sender: 'System', message: `${socket.username} has joined the chat`, _id: new Date().toISOString(),
@@ -171,7 +184,6 @@ io.on('connection', async (socket) => {
     const room = await Room.findOne({ name: roomName });
     if (!room) return socket.emit('room_error', 'Room not found.');
     
-    // Bypass secret code for General and the room creator
     const isGeneral = roomName === 'General';
     const isCreator = room.creatorId === socket.id;
 
