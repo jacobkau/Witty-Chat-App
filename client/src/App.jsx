@@ -29,7 +29,7 @@ const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen
 
   const handleRoomClick = (room) => {
     if (room.name === current) return;
-    if (room.creatorId === myId || room.name === 'Community Chat') {
+    if (room.creatorId === myId || room.name === 'General') {
       onJoin(room.name);
     } else {
       const code = window.prompt(`Enter secret code for ${room.name}:`);
@@ -179,6 +179,10 @@ function App() {
   const [activePicker, setActivePicker] = useState(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  // NEW: Track unread messages for users and rooms
+  const [unreadDMs, setUnreadDMs] = useState({});
+  const [unreadRooms, setUnreadRooms] = useState({});
+
   const audioRef = useRef(null);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -193,21 +197,56 @@ function App() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, privateRecipient]);
 
+  // Handle Notifications & Unread Badges
   useEffect(() => {
-    if (messages.length) {
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage.senderId !== socket?.id && !lastMessage.system) {
-        if (notificationsEnabled && document.hidden) {
-          new Notification(`New message from ${lastMessage.sender}`, {
-            body: lastMessage.fileUrl ? 'Sent a file' : lastMessage.message,
-          });
+    if (!messages.length) return;
+    const lastMessage = messages[messages.length - 1];
+
+    // Only trigger if message is from someone else and not a system message
+    if (lastMessage.senderId !== socket?.id && !lastMessage.system) {
+      
+      // 1. Play sound
+      audioRef.current?.play().catch(() => {});
+
+      // 2. Handle Unread Badges
+      if (lastMessage.isPrivate) {
+        // If it's a private message and I'm NOT currently looking at that person
+        if (privateRecipient !== lastMessage.senderId) {
+          setUnreadDMs(prev => ({
+            ...prev,
+            [lastMessage.senderId]: (prev[lastMessage.senderId] || 0) + 1
+          }));
         }
-        audioRef.current?.play().catch(() => {});
+      } else {
+        // If it's a room message and I'm NOT currently in that room
+        if (privateRecipient || lastMessage.room !== currentRoom) {
+          setUnreadRooms(prev => ({
+            ...prev,
+            [lastMessage.room]: (prev[lastMessage.room] || 0) + 1
+          }));
+        }
+      }
+
+      // 3. Browser Notifications
+      if (notificationsEnabled && document.hidden) {
+        new Notification(`New message from ${lastMessage.sender}`, {
+          body: lastMessage.fileUrl ? 'Sent a file' : lastMessage.message,
+        });
       }
     }
-  }, [messages, notificationsEnabled, socket?.id]);
+  }, [messages, notificationsEnabled, socket?.id, currentRoom, privateRecipient]);
+
+  // Clear unread badge when opening chat
+  useEffect(() => {
+    if (privateRecipient) {
+      setUnreadDMs(prev => ({ ...prev, [privateRecipient]: 0 }));
+    }
+    if (currentRoom) {
+      setUnreadRooms(prev => ({ ...prev, [currentRoom]: 0 }));
+    }
+  }, [privateRecipient, currentRoom]);
 
   useEffect(() => {
     if (!socket) return;
@@ -349,7 +388,6 @@ function App() {
               <Menu size={22} />
             </button>
             
-            {/* Back Button if not in General */}
             {currentRoom !== 'General' && !privateRecipient && (
               <button onClick={() => handleLeaveRoom()} className="mr-3 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 flex items-center text-sm font-semibold">
                 <ArrowLeft size={16} className="mr-1" /> Back
@@ -376,20 +414,27 @@ function App() {
         </header>
 
         <div className="flex flex-row flex-1 overflow-hidden">
-          {/* SIDEBAR: ONLINE USERS & DMs */}
           <aside className="hidden sm:flex flex-col w-48 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 overflow-y-auto">
             <strong className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
-              Direct Messages ({users.length})
+              Direct Messages
             </strong>
             <ul className="space-y-1">
               {users.filter(u => u.id !== socket?.id).map((u) => (
                 <li
                   key={u.id}
                   onClick={() => setPrivateRecipient(privateRecipient === u.id ? '' : u.id)}
-                  className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer text-sm transition ${u.id === privateRecipient ? 'bg-blue-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                  className={`flex items-center justify-between px-2 py-1.5 rounded cursor-pointer text-sm transition ${u.id === privateRecipient ? 'bg-blue-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
                 >
-                  <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
-                  <span className="truncate">{u.username}</span>
+                  <div className="flex items-center gap-2 truncate">
+                    <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                    <span className="truncate">{u.username}</span>
+                  </div>
+                  {/* 🚨 UNREAD BADGE */}
+                  {unreadDMs[u.id] > 0 && (
+                    <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
+                      {unreadDMs[u.id]}
+                    </span>
+                  )}
                 </li>
               ))}
               {users.length === 1 && (
@@ -402,9 +447,10 @@ function App() {
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2 w-full flex flex-col">
               
               {messages.map((msg) => {
-                // Filter messages based on mode
                 const isSent = msg.senderEmail === myEmail;
                 const isSystem = msg.sender === 'System';
+                
+                // Filter messages based on mode
                 if (privateRecipient) {
                    const isMyPrivateMsg = msg.isPrivate && (
                      (msg.senderId === socket.id && msg.to === privateRecipient) || 
