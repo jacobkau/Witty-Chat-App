@@ -14,7 +14,7 @@ export const socket = io(SOCKET_URL, {
 export const useSocket = () => {
   const [isConnected, setIsConnected] = useState(socket.connected);
   const [messages, setMessages] = useState([]);
-  const [users, setUsers] = useState([]);
+  const [users, setUsers] = useState([]); 
   const [typingUsers, setTypingUsers] = useState([]);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
   const [username, setUsername] = useState('');
@@ -37,18 +37,21 @@ export const useSocket = () => {
     setUsername('');
     setMyEmail('');
     setConnectionStatus('disconnected');
-    setMessages([]); // Clear on explicit logout
+    setMessages([]); 
   };
 
   const sendMessage = (message) => socket.emit('send_message', { message });
-  const sendPrivateMessage = (to, message) => socket.emit('private_message', { to, message });
+  
+  // 🚨 FIX: Send toEmail instead of toSocketId
+  const sendPrivateMessage = (toEmail, message) => socket.emit('private_message', { toEmail, message });
+  
   const sendReaction = (messageId, reaction) => socket.emit('react_to_message', { messageId, reaction });
   const pinMessage = (messageId) => socket.emit('pin_message', { messageId });
   const starMessage = (messageId) => socket.emit('star_message', { messageId });
   const deleteMessage = (messageId) => socket.emit('delete_message', { messageId });
   const clearChat = (withUserId) => socket.emit('clear_chat', { withUserId });
 
-  const uploadFile = async (file, privateRecipientId = null) => {
+  const uploadFile = async (file, privateRecipientEmail = null) => {
     if (!username || !socket.id) return;
     
     if (file.size > 10 * 1024 * 1024) {
@@ -70,8 +73,8 @@ export const useSocket = () => {
             socketId: socket.id,
             room: currentRoom,
             email: myEmail,
-            isPrivate: !!privateRecipientId,
-            to: privateRecipientId
+            isPrivate: !!privateRecipientEmail,
+            to: privateRecipientEmail 
           }),
         });
 
@@ -138,7 +141,6 @@ export const useSocket = () => {
 
     const onRoomList = (rooms) => setAvailableRooms(rooms);
     
-    // 🚨 FIX: MERGE incoming history with existing messages, do not replace
     const onMessageHistory = (history) => {
       setMessages(prev => {
         const existingIds = new Set(prev.map(m => m._id || m.id));
