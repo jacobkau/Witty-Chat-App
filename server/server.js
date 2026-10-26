@@ -46,7 +46,6 @@ const generateStrongCode = () => {
   return result;
 };
 
-// --- Socket Authentication ---
 io.use(async (socket, next) => {
   const { username, email, secretCode } = socket.handshake.auth;
 
@@ -76,14 +75,7 @@ io.use(async (socket, next) => {
       socket.username = userByEmail.username;
       socket.email = userByEmail.email;
     } else {
-      
-      const newUser = await User.create({ 
-        username, 
-        email, 
-        isOnline: true, 
-        socketId: socket.id 
-      });
-      
+      const newUser = await User.create({ username, email, isOnline: true, socketId: socket.id });
       socket.username = newUser.username;
       socket.email = newUser.email;
     }
@@ -98,7 +90,7 @@ io.use(async (socket, next) => {
 
 app.post('/upload', async (req, res) => {
   try {
-    const { file, username, socketId, room, email } = req.body;
+    const { file, username, socketId, room, email, isPrivate, to } = req.body;
     const result = await cloudinary.uploader.upload(file, { folder: 'witty_chat_uploads' });
 
     const message = new Message({
@@ -106,13 +98,22 @@ app.post('/upload', async (req, res) => {
       senderId: socketId,
       senderEmail: email,
       room: room,
+      isPrivate: isPrivate || false,
+      to: to || null,
       fileUrl: result.secure_url,
       fileName: result.original_filename,
       fileType: result.format,
     });
     
     await message.save();
-    io.to(room).emit('receive_message', message.toObject());
+    
+    if (isPrivate && to) {
+      io.to(to).emit('receive_message', message.toObject());
+      io.to(socketId).emit('receive_message', message.toObject());
+    } else {
+      io.to(room).emit('receive_message', message.toObject());
+    }
+    
     res.status(201).json({ message: 'File uploaded successfully', data: message.toObject() });
   } catch (error) {
     console.error('File upload error:', error);
@@ -136,7 +137,7 @@ io.on('connection', async (socket) => {
   socket.emit('room_list', rooms);
   io.to(socket.room).emit('user_list', getUsersInRoom(socket.room));
 
-  const history = await Message.find({ room: socket.room }).sort({ createdAt: -1 }).limit(50).lean();
+  const history = await Message.find({ room: socket.room, isPrivate: false }).sort({ createdAt: -1 }).limit(50).lean();
   socket.emit('message_history', history.reverse());
 
   socket.broadcast.to(socket.room).emit('receive_message', {
@@ -166,7 +167,7 @@ io.on('connection', async (socket) => {
     socket.room = roomName;
     socket.join(roomName);
     
-    const history = await Message.find({ room: roomName }).sort({ createdAt: -1 }).limit(50).lean();
+    const history = await Message.find({ room: roomName, isPrivate: false }).sort({ createdAt: -1 }).limit(50).lean();
     socket.emit('message_history', history.reverse());
     io.to(roomName).emit('user_list', getUsersInRoom(roomName));
     socket.emit('room_joined', roomName);
@@ -187,7 +188,7 @@ io.on('connection', async (socket) => {
           if (s) {
             s.leave(roomName); s.join('General'); s.room = 'General';
             s.emit('room_deleted', roomName);
-            const history = await Message.find({ room: 'General' }).sort({ createdAt: -1 }).limit(50).lean();
+            const history = await Message.find({ room: 'General', isPrivate: false }).sort({ createdAt: -1 }).limit(50).lean();
             s.emit('message_history', history.reverse());
             io.to('General').emit('user_list', getUsersInRoom('General'));
           }
@@ -199,14 +200,26 @@ io.on('connection', async (socket) => {
 
   socket.on('send_message', async (data) => {
     const message = new Message({
-      sender: socket.username, senderId: socket.id, senderEmail: socket.email, message: data.message, room: socket.room,
+      sender: socket.username, senderId: socket.id, senderEmail: socket.email, message: data.message, room: socket.room, isPrivate: false,
     });
     await message.save();
     io.to(socket.room).emit('receive_message', message.toObject());
   });
 
-  socket.on('private_message', ({ to, message }) => {
-    const msgPayload = { sender: socket.username, senderId: socket.id, senderEmail: socket.email, message, isPrivate: true, _id: new Date().toISOString() };
+  socket.on('private_message', async ({ to, message }) => {
+    const msgPayload = { 
+      sender: socket.username, 
+      senderId: socket.id, 
+      senderEmail: socket.email, 
+      message, 
+      isPrivate: true, 
+      to, 
+      room: socket.room,
+      _id: new Date().toISOString(),
+      createdAt: new Date().toISOString()
+    };
+    
+    // Emit to both sender and recipient
     socket.to(to).emit('receive_message', msgPayload);
     socket.emit('receive_message', msgPayload);
   });
@@ -219,7 +232,13 @@ io.on('connection', async (socket) => {
     if (idx > -1) userList.splice(idx, 1); else userList.push(socket.username);
     message.reactions.set(reaction, userList);
     await message.save();
-    io.to(message.room).emit('message_updated', { messageId, reactions: Object.fromEntries(message.reactions) });
+    
+    if (message.isPrivate && message.to) {
+      io.to(message.to).emit('message_updated', { messageId, reactions: Object.fromEntries(message.reactions) });
+      io.to(message.senderId).emit('message_updated', { messageId, reactions: Object.fromEntries(message.reactions) });
+    } else {
+      io.to(message.room).emit('message_updated', { messageId, reactions: Object.fromEntries(message.reactions) });
+    }
   });
 
   socket.on('request_account_deletion', async () => {
