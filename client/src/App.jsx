@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSocket } from './socket/socket';
 import { ThemeContext, useTheme } from './context/ThemeContext';
-import { Trash2, Paperclip, Moon, Sun, Menu, X, Hand, MessageCircle, LogOut, UserX, Loader2, ArrowLeft, Users, Reply } from 'lucide-react';
+import { 
+  Trash2, Paperclip, Moon, Sun, Menu, X, Hand, MessageCircle, 
+  LogOut, UserX, Loader2, ArrowLeft, Users, Reply, Copy, Pin, 
+  Star, Share2, Info, ShieldAlert, Download, MoreVertical 
+} from 'lucide-react';
 
 const EMOJI_REACTIONS = ['👍', '❤️', '😂', '😮', '😢'];
 
@@ -175,7 +179,8 @@ function App() {
   const {
     socket, username, isConnected, messages, users, typingUsers, connectionStatus,
     connect, disconnect, sendMessage, sendPrivateMessage, sendReaction, uploadFile,
-    currentRoom, availableRooms, joinRoom, createRoom, deleteRoom, myId, myEmail, deleteAccount
+    currentRoom, availableRooms, joinRoom, createRoom, deleteRoom, myId, myEmail, deleteAccount,
+    pinMessage, starMessage, deleteMessage, clearChat
   } = useSocket();
 
   const [loginName, setLoginName] = useState('');
@@ -189,7 +194,9 @@ function App() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [activePicker, setActivePicker] = useState(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false); 
 
+  const [activeMenu, setActiveMenu] = useState(null); 
   const [unreadDMs, setUnreadDMs] = useState({});
   const [unreadRooms, setUnreadRooms] = useState({});
 
@@ -210,26 +217,28 @@ function App() {
   }, [messages, privateRecipient]);
 
   useEffect(() => {
+    const handleClickOutside = () => {
+      setActiveMenu(null);
+      setShowHeaderMenu(false);
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
     if (!messages.length) return;
     const lastMessage = messages[messages.length - 1];
 
     if (lastMessage.senderId !== socket?.id && !lastMessage.system) {
-      
       audioRef.current?.play().catch(() => {});
 
       if (lastMessage.isPrivate) {
         if (privateRecipient !== lastMessage.senderId) {
-          setUnreadDMs(prev => ({
-            ...prev,
-            [lastMessage.senderId]: (prev[lastMessage.senderId] || 0) + 1
-          }));
+          setUnreadDMs(prev => ({ ...prev, [lastMessage.senderId]: (prev[lastMessage.senderId] || 0) + 1 }));
         }
       } else {
         if (privateRecipient || lastMessage.room !== currentRoom) {
-          setUnreadRooms(prev => ({
-            ...prev,
-            [lastMessage.room]: (prev[lastMessage.room] || 0) + 1
-          }));
+          setUnreadRooms(prev => ({ ...prev, [lastMessage.room]: (prev[lastMessage.room] || 0) + 1 }));
         }
       }
 
@@ -242,12 +251,8 @@ function App() {
   }, [messages, notificationsEnabled, socket?.id, currentRoom, privateRecipient]);
 
   useEffect(() => {
-    if (privateRecipient) {
-      setUnreadDMs(prev => ({ ...prev, [privateRecipient]: 0 }));
-    }
-    if (currentRoom) {
-      setUnreadRooms(prev => ({ ...prev, [currentRoom]: 0 }));
-    }
+    if (privateRecipient) setUnreadDMs(prev => ({ ...prev, [privateRecipient]: 0 }));
+    if (currentRoom) setUnreadRooms(prev => ({ ...prev, [currentRoom]: 0 }));
   }, [privateRecipient, currentRoom]);
 
   useEffect(() => {
@@ -314,9 +319,47 @@ function App() {
   };
 
   const startDM = (userId) => {
-    if (userId === socket.id) return; 
+    if (userId === socket.id) return;
     setPrivateRecipient(userId);
     setReplyingTo(null);
+  };
+
+  const handleCopy = (text) => {
+    navigator.clipboard.writeText(text);
+    setActiveMenu(null);
+  };
+
+  const handlePin = (msgId) => {
+    pinMessage(msgId);
+    setActiveMenu(null);
+  };
+
+  const handleStar = (msgId) => {
+    starMessage(msgId);
+    setActiveMenu(null);
+  };
+
+  const handleDeleteMessage = (msgId) => {
+    deleteMessage(msgId);
+    setActiveMenu(null);
+  };
+
+  const handleExportChat = () => {
+    const chatText = messages.map(m => `[${formatTime(m.createdAt)}] ${m.sender}: ${m.message}`).join('\n');
+    const blob = new Blob([chatText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `chat-export-${Date.now()}.txt`;
+    a.click();
+    setShowHeaderMenu(false);
+  };
+
+  const handleClearChat = () => {
+    if(window.confirm("Clear this chat? This will remove your view of these messages.")) {
+      clearChat(privateRecipient);
+      setShowHeaderMenu(false);
+    }
   };
 
   if (!isConnected) {
@@ -330,38 +373,11 @@ function App() {
             Secure real-time messaging.
           </p>
           <form onSubmit={handleLogin} className="space-y-4">
-            <input
-              type="text"
-              placeholder="Username"
-              value={loginName}
-              onChange={(e) => setLoginName(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            />
-            <input
-              type="email"
-              placeholder="Email Address (Unique)"
-              value={loginEmail}
-              onChange={(e) => setLoginEmail(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            />
-            <input
-              type="password"
-              placeholder="Secret Membership Code"
-              value={secretCode}
-              onChange={(e) => setSecretCode(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            />
-            <button
-              type="submit"
-              disabled={connectionStatus === 'connecting'}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition shadow-md flex justify-center items-center gap-2 disabled:opacity-70"
-            >
-              {connectionStatus === 'connecting' ? (
-                <><Loader2 className="animate-spin" size={20} /> Connecting...</>
-              ) : ('Join WittyChat')}
+            <input type="text" placeholder="Username" value={loginName} onChange={(e) => setLoginName(e.target.value)} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+            <input type="email" placeholder="Email Address (Unique)" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+            <input type="password" placeholder="Secret Membership Code" value={secretCode} onChange={(e) => setSecretCode(e.target.value)} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+            <button type="submit" disabled={connectionStatus === 'connecting'} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition shadow-md flex justify-center items-center gap-2 disabled:opacity-70">
+              {connectionStatus === 'connecting' ? (<><Loader2 className="animate-spin" size={20} /> Connecting...</>) : ('Join WittyChat')}
             </button>
           </form>
         </div>
@@ -369,7 +385,6 @@ function App() {
     );
   }
 
-  // Determine active title based on mode
   const activeTitle = privateRecipient 
     ? `Private: ${users.find(u => u.id === privateRecipient)?.username || 'User'}` 
     : currentRoom;
@@ -387,19 +402,12 @@ function App() {
         unreadRooms={unreadRooms}
         onClose={() => setIsMobileMenuOpen(false)}
         handleDeleteRoom={handleDeleteRoom}
-        onJoin={(room, code) => { 
-          joinRoom(room, code); 
-          setPrivateRecipient(''); 
-          setIsMobileMenuOpen(false); 
-        }}
-        onCreate={(room) => { 
-          createRoom(room); 
-          setIsMobileMenuOpen(false); 
-        }}
+        onJoin={(room, code) => { joinRoom(room, code); setPrivateRecipient(''); setIsMobileMenuOpen(false); }}
+        onCreate={(room) => { createRoom(room); setIsMobileMenuOpen(false); }}
       />
 
       <div className="flex flex-col h-screen min-w-0">
-        <header className="px-4 md:px-6 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-between gap-2">
+        <header className="px-4 md:px-6 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-between gap-2 relative z-20">
           <div className="flex items-center min-w-0">
             <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden mr-3 text-gray-700 dark:text-gray-200 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition">
               <Menu size={22} />
@@ -421,12 +429,27 @@ function App() {
           </div>
           <div className="flex items-center gap-2 md:gap-3">
             <span className="hidden sm:inline-flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
-              <Hand size={14} className="text-yellow-500" />
-              {username}
+              <Hand size={14} className="text-yellow-500" /> {username}
             </span>
             <button onClick={toggleTheme} className="p-2 border border-gray-300 dark:border-gray-600 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition">
               {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
             </button>
+
+            {privateRecipient && (
+              <div className="relative">
+                <button onClick={(e) => { e.stopPropagation(); setShowHeaderMenu(!showHeaderMenu); }} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition">
+                  <MoreVertical size={20} />
+                </button>
+                {showHeaderMenu && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 border border-gray-200 dark:border-gray-700 z-50">
+                    <button onClick={() => alert('Profile Info Modal would open here.')} className="flex items-center gap-2 w-full px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-left"><Info size={16}/> User Info</button>
+                    <button onClick={handleExportChat} className="flex items-center gap-2 w-full px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-left"><Download size={16}/> Export Chat</button>
+                    <button onClick={handleClearChat} className="flex items-center gap-2 w-full px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-left"><Trash2 size={16}/> Clear Chat</button>
+                    <button onClick={() => alert('User Blocked.')} className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 text-left"><ShieldAlert size={16}/> Block User</button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </header>
 
@@ -447,25 +470,24 @@ function App() {
                     <span className="truncate">{u.username}</span>
                   </div>
                   {unreadDMs[u.id] > 0 && (
-                    <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
-                      {unreadDMs[u.id]}
-                    </span>
+                    <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">{unreadDMs[u.id]}</span>
                   )}
                 </li>
               ))}
-              {users.length === 1 && (
-                <li className="text-xs text-gray-400 text-center mt-2">No other users online</li>
-              )}
             </ul>
           </aside>
 
-          <div className="flex flex-col flex-1 min-w-0">
+          <div className="flex flex-col flex-1 min-w-0 relative">
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2 w-full flex flex-col">
               
               {messages.map((msg) => {
                 const isSent = msg.senderEmail === myEmail;
                 const isSystem = msg.sender === 'System';
+                const isPinned = msg.isPinned;
+                const isStarred = msg.isStarred;
                 
+                if (msg.deletedFor && msg.deletedFor.includes(myEmail)) return null;
+
                 if (privateRecipient) {
                    const isMyPrivateMsg = msg.isPrivate && (
                      (msg.senderId === socket.id && msg.to === privateRecipient) || 
@@ -500,12 +522,11 @@ function App() {
                         </span>
                       </div>
                     ) : (
-                      <div className={`flex items-end gap-2 max-w-[85%] md:max-w-[70%] w-fit ${isSent ? 'self-end flex-row-reverse' : 'self-start flex-row'}`}>
+                      <div className={`flex items-end gap-2 max-w-[85%] md:max-w-[70%] w-fit relative group ${isSent ? 'self-end flex-row-reverse' : 'self-start flex-row'}`}>
                         
                         <div 
                           onClick={() => !isSent && startDM(msg.senderId)}
                           className={`w-9 h-9 rounded-full bg-gray-400 text-white flex items-center justify-center font-bold text-sm flex-shrink-0 ${!isSent ? 'cursor-pointer hover:bg-blue-500 transition-colors' : ''}`}
-                          title={!isSent ? `Message ${msg.sender}` : msg.sender}
                         >
                           {getInitials(msg.sender)}
                         </div>
@@ -516,30 +537,44 @@ function App() {
                             className={`text-xs font-bold mb-1 ${isSent ? 'text-right text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:text-blue-600 cursor-pointer hover:underline'}`}
                           >
                             {isSent ? 'You' : msg.sender}
+                            {isPinned && <Pin size={10} className="inline ml-1 text-blue-500" />}
+                            {isStarred && <Star size={10} className="inline ml-1 text-yellow-500 fill-yellow-500" />}
                           </div>
                           
-                          <div 
-                            onClick={() => !isSystem && setReplyingTo(msg)}
-                            className={`px-3 py-2 rounded-2xl shadow-sm break-words cursor-pointer transition-all hover:opacity-90 ${isSent ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-bl-sm border border-gray-200 dark:border-gray-700'}`}
-                            title="Click to reply"
-                          >
-                            {msg.message && <p className="whitespace-pre-wrap">{msg.message}</p>}
-                            {msg.fileUrl && (msg.fileType?.startsWith('image') || msg.fileType?.includes('jpg') || msg.fileType?.includes('png') ? (
-                              <img src={msg.fileUrl} alt={msg.fileName} onClick={(e) => { e.stopPropagation(); window.open(msg.fileUrl, '_blank'); }} className="max-w-full max-h-72 rounded-lg mt-1 cursor-pointer" />
-                            ) : (
-                              <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 mt-1 underline font-bold">
-                                <Paperclip size={14} />
-                                {msg.fileName || 'Download File'}
-                              </a>
-                            ))}
+                          <div className="relative">
+                            <div 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveMenu(activeMenu === (msg._id || msg.id) ? null : (msg._id || msg.id));
+                              }}
+                              className={`px-3 py-2 rounded-2xl shadow-sm break-words cursor-pointer transition-all hover:opacity-90 ${isSent ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-bl-sm border border-gray-200 dark:border-gray-700'}`}
+                            >
+                              {msg.message && <p className="whitespace-pre-wrap">{msg.message}</p>}
+                              {msg.fileUrl && (msg.fileType?.startsWith('image') || msg.fileType?.includes('jpg') || msg.fileType?.includes('png') ? (
+                                <img src={msg.fileUrl} alt={msg.fileName} onClick={(e) => { e.stopPropagation(); window.open(msg.fileUrl, '_blank'); }} className="max-w-full max-h-72 rounded-lg mt-1 cursor-pointer" />
+                              ) : (
+                                <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 mt-1 underline font-bold">
+                                  <Paperclip size={14} /> {msg.fileName || 'Download File'}
+                                </a>
+                              ))}
+                            </div>
+
+                            {activeMenu === (msg._id || msg.id) && (
+                              <div className={`absolute z-50 w-40 bg-white dark:bg-gray-800 rounded-md shadow-xl border border-gray-200 dark:border-gray-700 py-1 ${isSent ? 'right-full mr-2' : 'left-full ml-2'} top-0`}>
+                                <button onClick={(e) => { e.stopPropagation(); setReplyingTo(msg); setActiveMenu(null); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><Reply size={14}/> Reply</button>
+                                <button onClick={(e) => { e.stopPropagation(); handleCopy(msg.message); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><Copy size={14}/> Copy</button>
+                                <button onClick={(e) => { e.stopPropagation(); handlePin(msg._id || msg.id); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><Pin size={14}/> {isPinned ? 'Unpin' : 'Pin'}</button>
+                                <button onClick={(e) => { e.stopPropagation(); handleStar(msg._id || msg.id); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><Star size={14}/> {isStarred ? 'Unstar' : 'Star'}</button>
+                                <button onClick={(e) => { e.stopPropagation(); alert('Share link copied!'); setActiveMenu(null); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><Share2 size={14}/> Share</button>
+                                <button onClick={(e) => { e.stopPropagation(); handleDeleteMessage(msg._id || msg.id); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"><Trash2 size={14}/> Delete</button>
+                              </div>
+                            )}
                           </div>
-                          
+
                           <div className={`flex items-center gap-2 mt-1 text-xs text-gray-400 dark:text-gray-500 ${isSent ? 'justify-end' : 'justify-start'}`}>
                             <span>{formatTime(rawDate)}</span>
                             {msg.reactions && Object.entries(msg.reactions).map(([reaction, reactors]) => reactors.length > 0 && (
-                              <span key={reaction} className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-1.5 py-0.5 rounded-full">
-                                {reaction} {reactors.length}
-                              </span>
+                              <span key={reaction} className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-1.5 py-0.5 rounded-full">{reaction} {reactors.length}</span>
                             ))}
                           </div>
                           {activePicker === msg._id && !msg.fileUrl && (
@@ -554,17 +589,14 @@ function App() {
               <div ref={messagesEndRef} />
             </div>
 
-            <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 md:px-4 py-3">
-              
+            <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 md:px-4 py-3 relative z-10">
               {replyingTo && (
                 <div className="flex items-center justify-between bg-gray-100 dark:bg-gray-700 p-2 rounded-lg mb-2 text-sm border-l-4 border-blue-500">
                   <div className="flex flex-col overflow-hidden">
                     <span className="font-bold text-blue-600 dark:text-blue-400 text-xs">Replying to {replyingTo.sender}</span>
                     <span className="truncate text-gray-600 dark:text-gray-300 text-xs">{replyingTo.message || 'File'}</span>
                   </div>
-                  <button onClick={() => setReplyingTo(null)} className="text-gray-500 hover:text-red-500 p-1">
-                    <X size={16} />
-                  </button>
+                  <button onClick={() => setReplyingTo(null)} className="text-gray-500 hover:text-red-500 p-1"><X size={16} /></button>
                 </div>
               )}
 
@@ -586,9 +618,7 @@ function App() {
                 <button type="button" onClick={() => fileInputRef.current?.click()} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
                   <Paperclip size={18} />
                 </button>
-                <button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-semibold text-sm transition">
-                  Send
-                </button>
+                <button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-semibold text-sm transition">Send</button>
               </form>
             </div>
           </div>
