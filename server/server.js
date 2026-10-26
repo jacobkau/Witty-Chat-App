@@ -11,14 +11,12 @@ const Room = require('./models/Room');
 
 dotenv.config();
 
-// Cloudinary Configuration
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Connect MongoDB
 mongoose.connect(process.env.MONGO_URI)
   .then(async () => {
     console.log('MongoDB Connected');
@@ -48,7 +46,6 @@ const generateStrongCode = () => {
   return result;
 };
 
-// --- Socket Authentication ---
 io.use(async (socket, next) => {
   const { username, email, secretCode } = socket.handshake.auth;
 
@@ -83,15 +80,16 @@ io.use(async (socket, next) => {
   }
 });
 
-// --- Cloudinary Upload Route ---
+
 app.post('/upload', async (req, res) => {
   try {
-    const { file, username, socketId, room } = req.body;
+    const { file, username, socketId, room, email } = req.body;
     const result = await cloudinary.uploader.upload(file, { folder: 'witty_chat_uploads' });
 
     const message = new Message({
       sender: username,
       senderId: socketId,
+      senderEmail: email, 
       room: room,
       fileUrl: result.secure_url,
       fileName: result.original_filename,
@@ -116,7 +114,7 @@ const getUsersInRoom = (room) => {
   });
 };
 
-// --- Socket Connection ---
+
 io.on('connection', async (socket) => {
   socket.join(socket.room);
 
@@ -131,7 +129,7 @@ io.on('connection', async (socket) => {
     sender: 'System', message: `${socket.username} has joined the chat`, _id: new Date().toISOString(),
   });
 
-  // CREATE ROOM
+
   socket.on('create_room', async ({ roomName }) => {
     if (!roomName || roomName.trim() === '') {
       return socket.emit('room_error', 'Room name is required.');
@@ -160,7 +158,7 @@ io.on('connection', async (socket) => {
     });
   });
 
-  // JOIN ROOM
+  
   socket.on('join_room', async ({ roomName, secretCode }) => {
     const room = await Room.findOne({ name: roomName });
     
@@ -180,7 +178,7 @@ io.on('connection', async (socket) => {
     socket.emit('room_joined', roomName);
   });
 
-  // DELETE ROOM
+
   socket.on('delete_room', async (roomName) => {
     if (roomName === 'General') return; 
     
@@ -209,11 +207,11 @@ io.on('connection', async (socket) => {
     }
   });
 
-  // MESSAGES
   socket.on('send_message', async (data) => {
     const message = new Message({
       sender: socket.username,
       senderId: socket.id,
+      senderEmail: socket.email, 
       message: data.message,
       room: socket.room,
     });
@@ -223,13 +221,12 @@ io.on('connection', async (socket) => {
 
   socket.on('private_message', ({ to, message }) => {
     const msgPayload = {
-      sender: socket.username, senderId: socket.id, message, isPrivate: true, _id: new Date().toISOString(),
+      sender: socket.username, senderId: socket.id, senderEmail: socket.email, message, isPrivate: true, _id: new Date().toISOString(),
     };
     socket.to(to).emit('receive_message', msgPayload);
     socket.emit('receive_message', msgPayload);
   });
 
-  // REACTIONS
   socket.on('react_to_message', async ({ messageId, reaction }) => {
     const message = await Message.findById(messageId);
     if (!message) return;
@@ -241,7 +238,6 @@ io.on('connection', async (socket) => {
     io.to(message.room).emit('message_updated', { messageId, reactions: Object.fromEntries(message.reactions) });
   });
 
-  // NEW: Account Deletion (Leaves chats but deletes user)
   socket.on('request_account_deletion', async () => {
     try {
       await User.findOneAndDelete({ socketId: socket.id });
