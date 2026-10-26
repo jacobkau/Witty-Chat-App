@@ -43,7 +43,7 @@ export const useSocket = () => {
   const sendPrivateMessage = (to, message) => socket.emit('private_message', { to, message });
   const sendReaction = (messageId, reaction) => socket.emit('react_to_message', { messageId, reaction });
 
-  const uploadFile = async (file) => {
+  const uploadFile = async (file, privateRecipientId = null) => {
     if (!username || !socket.id) return;
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -53,7 +53,15 @@ export const useSocket = () => {
         await fetch(`${SOCKET_URL}/upload`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ file: base64String, username, socketId: socket.id, room: currentRoom, email: myEmail }),
+          body: JSON.stringify({ 
+            file: base64String, 
+            username, 
+            socketId: socket.id, 
+            room: currentRoom, 
+            email: myEmail,
+            isPrivate: !!privateRecipientId,
+            to: privateRecipientId
+          }),
         });
       } catch (error) {
         console.error('Error uploading file:', error);
@@ -102,9 +110,9 @@ export const useSocket = () => {
         subject: `Your Secret Code for Room: ${roomName}`,
         message: `Hello ${creatorName},\n\nYou created "${roomName}".\n\nSecret code: ${secretCode}`,
       };
-      const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
-      const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
-      const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
+      const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID || 'YOUR_SERVICE_ID';
+      const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID || 'YOUR_TEMPLATE_ID';
+      const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY || 'YOUR_PUBLIC_KEY';
 
       emailjs.send(serviceId, templateId, templateParams, publicKey)
         .then(() => alert(`Room created! Code emailed to ${creatorEmail}.`))
@@ -118,9 +126,9 @@ export const useSocket = () => {
         subject: `Goodbye from WittyChat, ${username}`,
         message: `Hello ${username},\n\nYour account has been deleted.`,
       };
-      const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
-      const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
-      const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
+      const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID || 'YOUR_SERVICE_ID';
+      const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID || 'YOUR_TEMPLATE_ID';
+      const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY || 'YOUR_PUBLIC_KEY';
 
       emailjs.send(serviceId, templateId, templateParams, publicKey).catch(() => {});
       alert('Your account has been deleted. You have left WittyChat.');
@@ -128,7 +136,7 @@ export const useSocket = () => {
     };
 
     socket.on('connect', onConnect);
-    socket.on('connect_error', onConnectError); 
+    socket.on('connect_error', onConnectError);
     socket.on('disconnect', onDisconnect);
     socket.on('receive_message', onReceiveMessage);
     socket.on('private_message', onReceiveMessage);
