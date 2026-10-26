@@ -344,6 +344,20 @@ function App() {
     setActiveMenu(null);
   };
 
+  const handleShare = (msg) => {
+    const text = msg.message || msg.fileUrl;
+    if (navigator.share) {
+      navigator.share({
+        title: 'WittyChat Message',
+        text: text,
+      }).catch(console.error);
+    } else {
+      navigator.clipboard.writeText(text);
+      alert('Message copied to clipboard for sharing!');
+    }
+    setActiveMenu(null);
+  };
+
   const handleExportChat = () => {
     const chatText = messages.map(m => `[${formatTime(m.createdAt)}] ${m.sender}: ${m.message}`).join('\n');
     const blob = new Blob([chatText], { type: 'text/plain' });
@@ -565,7 +579,7 @@ function App() {
                                 <button onClick={(e) => { e.stopPropagation(); handleCopy(msg.message); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><Copy size={14}/> Copy</button>
                                 <button onClick={(e) => { e.stopPropagation(); handlePin(msg._id || msg.id); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><Pin size={14}/> {isPinned ? 'Unpin' : 'Pin'}</button>
                                 <button onClick={(e) => { e.stopPropagation(); handleStar(msg._id || msg.id); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><Star size={14}/> {isStarred ? 'Unstar' : 'Star'}</button>
-                                <button onClick={(e) => { e.stopPropagation(); alert('Share link copied!'); setActiveMenu(null); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><Share2 size={14}/> Share</button>
+                                <button onClick={(e) => { e.stopPropagation(); handleShare(msg); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><Share2 size={14}/> Share</button>
                                 <button onClick={(e) => { e.stopPropagation(); handleDeleteMessage(msg._id || msg.id); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"><Trash2 size={14}/> Delete</button>
                               </div>
                             )}
