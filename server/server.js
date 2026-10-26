@@ -46,6 +46,7 @@ const generateStrongCode = () => {
   return result;
 };
 
+// --- Socket Authentication ---
 io.use(async (socket, next) => {
   const { username, email, secretCode } = socket.handshake.auth;
 
@@ -58,20 +59,35 @@ io.use(async (socket, next) => {
   }
 
   try {
-    let user = await User.findOne({ email });
+    let userByEmail = await User.findOne({ email });
+    let userByUsername = await User.findOne({ username });
 
-    if (user) {
-      if (user.isOnline) return next(new Error('This email is already logged in.'));
-      user.username = username;
-      user.isOnline = true;
-      user.socketId = socket.id;
-      await user.save();
-    } else {
-      user = await User.create({ username, email, isOnline: true, socketId: socket.id });
+    if (userByUsername && (!userByEmail || userByUsername.email !== userByEmail.email)) {
+      return next(new Error('This username is already taken by another user.'));
     }
 
-    socket.username = user.username;
-    socket.email = user.email;
+    if (userByEmail) {
+      if (userByEmail.isOnline) return next(new Error('This email is already logged in from another session.'));
+      
+      userByEmail.isOnline = true;
+      userByEmail.socketId = socket.id;
+      await userByEmail.save();
+      
+      socket.username = userByEmail.username;
+      socket.email = userByEmail.email;
+    } else {
+      
+      const newUser = await User.create({ 
+        username, 
+        email, 
+        isOnline: true, 
+        socketId: socket.id 
+      });
+      
+      socket.username = newUser.username;
+      socket.email = newUser.email;
+    }
+
     socket.room = 'General';
     next();
   } catch (error) {
@@ -79,7 +95,6 @@ io.use(async (socket, next) => {
     next(new Error('Database error during login.'));
   }
 });
-
 
 app.post('/upload', async (req, res) => {
   try {
@@ -89,7 +104,7 @@ app.post('/upload', async (req, res) => {
     const message = new Message({
       sender: username,
       senderId: socketId,
-      senderEmail: email, 
+      senderEmail: email,
       room: room,
       fileUrl: result.secure_url,
       fileName: result.original_filename,
@@ -114,7 +129,6 @@ const getUsersInRoom = (room) => {
   });
 };
 
-
 io.on('connection', async (socket) => {
   socket.join(socket.room);
 
@@ -129,44 +143,24 @@ io.on('connection', async (socket) => {
     sender: 'System', message: `${socket.username} has joined the chat`, _id: new Date().toISOString(),
   });
 
-
   socket.on('create_room', async ({ roomName }) => {
-    if (!roomName || roomName.trim() === '') {
-      return socket.emit('room_error', 'Room name is required.');
-    }
-
+    if (!roomName || roomName.trim() === '') return socket.emit('room_error', 'Room name is required.');
     const exists = await Room.findOne({ name: roomName });
     if (exists) return socket.emit('room_error', 'Room name already taken.');
 
     const newSecretCode = generateStrongCode();
-
-    await Room.create({
-      name: roomName,
-      creatorId: socket.id,
-      creatorName: socket.username,
-      secretCode: newSecretCode,
-    });
+    await Room.create({ name: roomName, creatorId: socket.id, creatorName: socket.username, secretCode: newSecretCode });
 
     const updatedRooms = await Room.find({}, '-secretCode');
     io.emit('room_list', updatedRooms);
 
-    socket.emit('room_created_success', { 
-      roomName, 
-      secretCode: newSecretCode, 
-      creatorEmail: socket.email,
-      creatorName: socket.username
-    });
+    socket.emit('room_created_success', { roomName, secretCode: newSecretCode, creatorEmail: socket.email, creatorName: socket.username });
   });
 
-  
   socket.on('join_room', async ({ roomName, secretCode }) => {
     const room = await Room.findOne({ name: roomName });
-    
     if (!room) return socket.emit('room_error', 'Room not found.');
-    
-    if (room.creatorId !== socket.id && room.secretCode !== secretCode) {
-      return socket.emit('room_error', 'Incorrect secret code for this room.');
-    }
+    if (room.creatorId !== socket.id && room.secretCode !== secretCode) return socket.emit('room_error', 'Incorrect secret code.');
 
     socket.leave(socket.room);
     socket.room = roomName;
@@ -178,10 +172,8 @@ io.on('connection', async (socket) => {
     socket.emit('room_joined', roomName);
   });
 
-
   socket.on('delete_room', async (roomName) => {
     if (roomName === 'General') return; 
-    
     const room = await Room.findOne({ name: roomName });
     if (room && room.creatorId === socket.id) {
       await Room.deleteOne({ name: roomName });
@@ -193,9 +185,7 @@ io.on('connection', async (socket) => {
         for (const sId of roomSockets) {
           const s = io.sockets.sockets.get(sId);
           if (s) {
-            s.leave(roomName);
-            s.join('General');
-            s.room = 'General';
+            s.leave(roomName); s.join('General'); s.room = 'General';
             s.emit('room_deleted', roomName);
             const history = await Message.find({ room: 'General' }).sort({ createdAt: -1 }).limit(50).lean();
             s.emit('message_history', history.reverse());
@@ -209,20 +199,14 @@ io.on('connection', async (socket) => {
 
   socket.on('send_message', async (data) => {
     const message = new Message({
-      sender: socket.username,
-      senderId: socket.id,
-      senderEmail: socket.email, 
-      message: data.message,
-      room: socket.room,
+      sender: socket.username, senderId: socket.id, senderEmail: socket.email, message: data.message, room: socket.room,
     });
     await message.save();
     io.to(socket.room).emit('receive_message', message.toObject());
   });
 
   socket.on('private_message', ({ to, message }) => {
-    const msgPayload = {
-      sender: socket.username, senderId: socket.id, senderEmail: socket.email, message, isPrivate: true, _id: new Date().toISOString(),
-    };
+    const msgPayload = { sender: socket.username, senderId: socket.id, senderEmail: socket.email, message, isPrivate: true, _id: new Date().toISOString() };
     socket.to(to).emit('receive_message', msgPayload);
     socket.emit('receive_message', msgPayload);
   });
@@ -244,7 +228,6 @@ io.on('connection', async (socket) => {
       socket.emit('account_deleted_success', { email: socket.email, username: socket.username });
       socket.disconnect();
     } catch (err) {
-      console.error('Error deleting account:', err);
       socket.emit('room_error', 'Failed to delete account.');
     }
   });
@@ -252,9 +235,7 @@ io.on('connection', async (socket) => {
   socket.on('disconnect', async () => {
     await User.findOneAndUpdate({ socketId: socket.id }, { isOnline: false, socketId: null });
     io.to(socket.room).emit('user_list', getUsersInRoom(socket.room));
-    io.to(socket.room).emit('receive_message', {
-      sender: 'System', message: `${socket.username} has left the chat`, _id: new Date().toISOString(),
-    });
+    io.to(socket.room).emit('receive_message', { sender: 'System', message: `${socket.username} has left the chat`, _id: new Date().toISOString() });
   });
 });
 
