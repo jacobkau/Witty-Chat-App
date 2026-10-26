@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSocket } from './socket/socket';
 import { ThemeContext, useTheme } from './context/ThemeContext';
-import { Trash2, Paperclip, Moon, Sun, Menu, X, Hand, MessageCircle, LogOut, UserX, Loader2, ArrowLeft, Users } from 'lucide-react';
+import { Trash2, Paperclip, Moon, Sun, Menu, X, Hand, MessageCircle, LogOut, UserX, Loader2, ArrowLeft, Users, Reply } from 'lucide-react';
 
 const EMOJI_REACTIONS = ['👍', '❤️', '😂', '😮', '😢'];
 
@@ -15,7 +15,7 @@ const ReactionPicker = ({ onSelect }) => (
   </div>
 );
 
-const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen, onClose, myId, myEmail }) => {
+const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen, onClose, myId, myEmail, unreadRooms }) => {
   const [newRoom, setNewRoom] = useState('');
 
   const handleCreate = () => {
@@ -49,7 +49,6 @@ const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen
         </div>
 
         <div className="flex-1 overflow-y-auto space-y-4">
-          {/* PUBLIC ROOM */}
           <div>
             <strong className="text-xs uppercase tracking-wide text-gray-400 mb-2 block">Public Room</strong>
             <ul className="space-y-1">
@@ -60,11 +59,15 @@ const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen
                 <span className="truncate flex items-center gap-2">
                   <Users size={16} /> Community Chat
                 </span>
+                {unreadRooms['General'] > 0 && (
+                  <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                    {unreadRooms['General']}
+                  </span>
+                )}
               </li>
             </ul>
           </div>
 
-          {/* CUSTOM ROOMS */}
           <div>
             <strong className="text-xs uppercase tracking-wide text-gray-400 mb-2 block">Custom Rooms</strong>
             <ul className="space-y-1">
@@ -75,18 +78,24 @@ const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen
                   className={`flex justify-between items-center px-3 py-2 rounded cursor-pointer transition ${room.name === current ? 'bg-blue-600 font-bold' : 'hover:bg-gray-700'}`}
                 >
                   <span className="truncate">{room.name}</span>
-                  {room.creatorId === myId && (
-                    <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteRoom(room.name); }} className="text-red-400 hover:text-red-300 p-1">
-                      <Trash2 size={16} />
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {unreadRooms[room.name] > 0 && room.name !== current && (
+                      <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                        {unreadRooms[room.name]}
+                      </span>
+                    )}
+                    {room.creatorId === myId && (
+                      <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteRoom(room.name); }} className="text-red-400 hover:text-red-300 p-1">
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
           </div>
         </div>
 
-        {/* CREATE ROOM */}
         <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-gray-600">
           <input
             type="text"
@@ -175,11 +184,12 @@ function App() {
 
   const [chatInput, setChatInput] = useState('');
   const [privateRecipient, setPrivateRecipient] = useState('');
+  const [replyingTo, setReplyingTo] = useState(null); 
+  
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [activePicker, setActivePicker] = useState(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // NEW: Track unread messages for users and rooms
   const [unreadDMs, setUnreadDMs] = useState({});
   const [unreadRooms, setUnreadRooms] = useState({});
 
@@ -199,20 +209,15 @@ function App() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, privateRecipient]);
 
-  // Handle Notifications & Unread Badges
   useEffect(() => {
     if (!messages.length) return;
     const lastMessage = messages[messages.length - 1];
 
-    // Only trigger if message is from someone else and not a system message
     if (lastMessage.senderId !== socket?.id && !lastMessage.system) {
       
-      // 1. Play sound
       audioRef.current?.play().catch(() => {});
 
-      // 2. Handle Unread Badges
       if (lastMessage.isPrivate) {
-        // If it's a private message and I'm NOT currently looking at that person
         if (privateRecipient !== lastMessage.senderId) {
           setUnreadDMs(prev => ({
             ...prev,
@@ -220,7 +225,6 @@ function App() {
           }));
         }
       } else {
-        // If it's a room message and I'm NOT currently in that room
         if (privateRecipient || lastMessage.room !== currentRoom) {
           setUnreadRooms(prev => ({
             ...prev,
@@ -229,7 +233,6 @@ function App() {
         }
       }
 
-      // 3. Browser Notifications
       if (notificationsEnabled && document.hidden) {
         new Notification(`New message from ${lastMessage.sender}`, {
           body: lastMessage.fileUrl ? 'Sent a file' : lastMessage.message,
@@ -238,7 +241,6 @@ function App() {
     }
   }, [messages, notificationsEnabled, socket?.id, currentRoom, privateRecipient]);
 
-  // Clear unread badge when opening chat
   useEffect(() => {
     if (privateRecipient) {
       setUnreadDMs(prev => ({ ...prev, [privateRecipient]: 0 }));
@@ -276,9 +278,16 @@ function App() {
   const handleSend = (e) => {
     e.preventDefault();
     if (chatInput.trim()) {
-      if (privateRecipient) sendPrivateMessage(privateRecipient, chatInput);
-      else sendMessage(chatInput);
+      let finalMessage = chatInput;
+      if (replyingTo) {
+        finalMessage = `> ${replyingTo.sender}: ${replyingTo.message}\n\n${chatInput}`;
+      }
+
+      if (privateRecipient) sendPrivateMessage(privateRecipient, finalMessage);
+      else sendMessage(finalMessage);
+      
       setChatInput('');
+      setReplyingTo(null); 
     }
   };
 
@@ -301,6 +310,13 @@ function App() {
   const handleLeaveRoom = () => {
     joinRoom('General');
     setPrivateRecipient(''); 
+    setReplyingTo(null);
+  };
+
+  const startDM = (userId) => {
+    if (userId === socket.id) return; 
+    setPrivateRecipient(userId);
+    setReplyingTo(null);
   };
 
   if (!isConnected) {
@@ -368,6 +384,7 @@ function App() {
         isOpen={isMobileMenuOpen}
         myId={myId}
         myEmail={myEmail}
+        unreadRooms={unreadRooms}
         onClose={() => setIsMobileMenuOpen(false)}
         handleDeleteRoom={handleDeleteRoom}
         onJoin={(room, code) => { 
@@ -429,7 +446,6 @@ function App() {
                     <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
                     <span className="truncate">{u.username}</span>
                   </div>
-                  {/* 🚨 UNREAD BADGE */}
                   {unreadDMs[u.id] > 0 && (
                     <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
                       {unreadDMs[u.id]}
@@ -450,7 +466,6 @@ function App() {
                 const isSent = msg.senderEmail === myEmail;
                 const isSystem = msg.sender === 'System';
                 
-                // Filter messages based on mode
                 if (privateRecipient) {
                    const isMyPrivateMsg = msg.isPrivate && (
                      (msg.senderId === socket.id && msg.to === privateRecipient) || 
@@ -486,24 +501,39 @@ function App() {
                       </div>
                     ) : (
                       <div className={`flex items-end gap-2 max-w-[85%] md:max-w-[70%] w-fit ${isSent ? 'self-end flex-row-reverse' : 'self-start flex-row'}`}>
-                        <div className="w-9 h-9 rounded-full bg-gray-400 text-white flex items-center justify-center font-bold text-sm flex-shrink-0" title={msg.sender}>
+                        
+                        <div 
+                          onClick={() => !isSent && startDM(msg.senderId)}
+                          className={`w-9 h-9 rounded-full bg-gray-400 text-white flex items-center justify-center font-bold text-sm flex-shrink-0 ${!isSent ? 'cursor-pointer hover:bg-blue-500 transition-colors' : ''}`}
+                          title={!isSent ? `Message ${msg.sender}` : msg.sender}
+                        >
                           {getInitials(msg.sender)}
                         </div>
+
                         <div className="flex flex-col min-w-0">
-                          <div className={`text-xs font-bold mb-1 ${isSent ? 'text-right text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                          <div 
+                            onClick={() => !isSent && startDM(msg.senderId)}
+                            className={`text-xs font-bold mb-1 ${isSent ? 'text-right text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:text-blue-600 cursor-pointer hover:underline'}`}
+                          >
                             {isSent ? 'You' : msg.sender}
                           </div>
-                          <div className={`px-3 py-2 rounded-2xl shadow-sm break-words ${isSent ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-bl-sm border border-gray-200 dark:border-gray-700'}`}>
+                          
+                          <div 
+                            onClick={() => !isSystem && setReplyingTo(msg)}
+                            className={`px-3 py-2 rounded-2xl shadow-sm break-words cursor-pointer transition-all hover:opacity-90 ${isSent ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-bl-sm border border-gray-200 dark:border-gray-700'}`}
+                            title="Click to reply"
+                          >
                             {msg.message && <p className="whitespace-pre-wrap">{msg.message}</p>}
                             {msg.fileUrl && (msg.fileType?.startsWith('image') || msg.fileType?.includes('jpg') || msg.fileType?.includes('png') ? (
-                              <img src={msg.fileUrl} alt={msg.fileName} onClick={() => window.open(msg.fileUrl, '_blank')} className="max-w-full max-h-72 rounded-lg mt-1 cursor-pointer" />
+                              <img src={msg.fileUrl} alt={msg.fileName} onClick={(e) => { e.stopPropagation(); window.open(msg.fileUrl, '_blank'); }} className="max-w-full max-h-72 rounded-lg mt-1 cursor-pointer" />
                             ) : (
-                              <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 mt-1 underline font-bold">
+                              <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 mt-1 underline font-bold">
                                 <Paperclip size={14} />
                                 {msg.fileName || 'Download File'}
                               </a>
                             ))}
                           </div>
+                          
                           <div className={`flex items-center gap-2 mt-1 text-xs text-gray-400 dark:text-gray-500 ${isSent ? 'justify-end' : 'justify-start'}`}>
                             <span>{formatTime(rawDate)}</span>
                             {msg.reactions && Object.entries(msg.reactions).map(([reaction, reactors]) => reactors.length > 0 && (
@@ -525,6 +555,19 @@ function App() {
             </div>
 
             <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 md:px-4 py-3">
+              
+              {replyingTo && (
+                <div className="flex items-center justify-between bg-gray-100 dark:bg-gray-700 p-2 rounded-lg mb-2 text-sm border-l-4 border-blue-500">
+                  <div className="flex flex-col overflow-hidden">
+                    <span className="font-bold text-blue-600 dark:text-blue-400 text-xs">Replying to {replyingTo.sender}</span>
+                    <span className="truncate text-gray-600 dark:text-gray-300 text-xs">{replyingTo.message || 'File'}</span>
+                  </div>
+                  <button onClick={() => setReplyingTo(null)} className="text-gray-500 hover:text-red-500 p-1">
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
+
               {typingUsers.length > 0 && (
                 <div className="text-xs text-gray-500 dark:text-gray-400 italic mb-1">
                   {typingUsers.join(', ')} is typing...
