@@ -159,7 +159,14 @@ io.on('connection', async (socket) => {
   socket.on('join_room', async ({ roomName, secretCode }) => {
     const room = await Room.findOne({ name: roomName });
     if (!room) return socket.emit('room_error', 'Room not found.');
-    if (room.creatorId !== socket.id && room.secretCode !== secretCode) return socket.emit('room_error', 'Incorrect secret code.');
+    
+    // Bypass secret code for General and the room creator
+    const isGeneral = roomName === 'General';
+    const isCreator = room.creatorId === socket.id;
+
+    if (!isGeneral && !isCreator && room.secretCode !== secretCode) {
+      return socket.emit('room_error', 'Incorrect secret code.');
+    }
 
     socket.leave(socket.room);
     socket.room = roomName;
