@@ -20,6 +20,8 @@ cloudinary.config({
 mongoose.connect(process.env.MONGO_URI)
   .then(async () => {
     console.log('MongoDB Connected');
+    await User.updateMany({}, { isOnline: false, socketId: null });
+    
     const generalExists = await Room.findOne({ name: 'General' });
     if (!generalExists) {
       await Room.create({ name: 'General', creatorId: 'system', creatorName: 'System', secretCode: 'public' });
@@ -66,10 +68,10 @@ io.use(async (socket, next) => {
     }
 
     if (userByEmail) {
-      if (userByEmail.isOnline) return next(new Error('This email is already logged in from another session.'));
       userByEmail.isOnline = true;
       userByEmail.socketId = socket.id;
       await userByEmail.save();
+      
       socket.username = userByEmail.username;
       socket.email = userByEmail.email;
     } else {
@@ -203,11 +205,19 @@ io.on('connection', async (socket) => {
   });
 
   socket.on('private_message', async ({ to, message }) => {
-    const msgPayload = {
-      sender: socket.username, senderId: socket.id, senderEmail: socket.email, message, isPrivate: true, to, room: socket.room, _id: new Date().toISOString(), createdAt: new Date().toISOString()
-    };
-    socket.to(to).emit('receive_message', msgPayload);
-    socket.emit('receive_message', msgPayload);
+    const msgPayload = new Message({
+      sender: socket.username,
+      senderId: socket.id,
+      senderEmail: socket.email,
+      message,
+      isPrivate: true,
+      to,
+      room: socket.room,
+    });
+    await msgPayload.save();
+
+    socket.to(to).emit('receive_message', msgPayload.toObject());
+    socket.emit('receive_message', msgPayload.toObject());
   });
 
   socket.on('react_to_message', async ({ messageId, reaction }) => {
