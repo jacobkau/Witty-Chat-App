@@ -34,14 +34,14 @@ const io = new Server(server, {
 });
 
 app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173' }));
-app.use(express.json({ limit: '50mb' })); 
+app.use(express.json({ limit: '50mb' }));
 
 const generateStrongCode = () => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let result = '';
   for (let i = 0; i < 8; i++) {
     result += chars.charAt(Math.floor(Math.random() * chars.length));
-    if (i === 3) result += '-'; 
+    if (i === 3) result += '-';
   }
   return result;
 };
@@ -67,11 +67,9 @@ io.use(async (socket, next) => {
 
     if (userByEmail) {
       if (userByEmail.isOnline) return next(new Error('This email is already logged in from another session.'));
-      
       userByEmail.isOnline = true;
       userByEmail.socketId = socket.id;
       await userByEmail.save();
-      
       socket.username = userByEmail.username;
       socket.email = userByEmail.email;
     } else {
@@ -83,7 +81,6 @@ io.use(async (socket, next) => {
     socket.room = 'General';
     next();
   } catch (error) {
-    console.error(error);
     next(new Error('Database error during login.'));
   }
 });
@@ -104,19 +101,18 @@ app.post('/upload', async (req, res) => {
       fileName: result.original_filename,
       fileType: result.format,
     });
-    
+
     await message.save();
-    
+
     if (isPrivate && to) {
       io.to(to).emit('receive_message', message.toObject());
       io.to(socketId).emit('receive_message', message.toObject());
     } else {
       io.to(room).emit('receive_message', message.toObject());
     }
-    
+
     res.status(201).json({ message: 'File uploaded successfully', data: message.toObject() });
   } catch (error) {
-    console.error('File upload error:', error);
     res.status(500).send('Server error during file upload.');
   }
 });
@@ -166,7 +162,7 @@ io.on('connection', async (socket) => {
     socket.leave(socket.room);
     socket.room = roomName;
     socket.join(roomName);
-    
+
     const history = await Message.find({ room: roomName, isPrivate: false }).sort({ createdAt: -1 }).limit(50).lean();
     socket.emit('message_history', history.reverse());
     io.to(roomName).emit('user_list', getUsersInRoom(roomName));
@@ -174,13 +170,13 @@ io.on('connection', async (socket) => {
   });
 
   socket.on('delete_room', async (roomName) => {
-    if (roomName === 'General') return; 
+    if (roomName === 'General') return;
     const room = await Room.findOne({ name: roomName });
     if (room && room.creatorId === socket.id) {
       await Room.deleteOne({ name: roomName });
       const updatedRooms = await Room.find({}, '-secretCode');
       io.emit('room_list', updatedRooms);
-      
+
       const roomSockets = io.sockets.adapter.rooms.get(roomName);
       if (roomSockets) {
         for (const sId of roomSockets) {
@@ -207,19 +203,9 @@ io.on('connection', async (socket) => {
   });
 
   socket.on('private_message', async ({ to, message }) => {
-    const msgPayload = { 
-      sender: socket.username, 
-      senderId: socket.id, 
-      senderEmail: socket.email, 
-      message, 
-      isPrivate: true, 
-      to, 
-      room: socket.room,
-      _id: new Date().toISOString(),
-      createdAt: new Date().toISOString()
+    const msgPayload = {
+      sender: socket.username, senderId: socket.id, senderEmail: socket.email, message, isPrivate: true, to, room: socket.room, _id: new Date().toISOString(), createdAt: new Date().toISOString()
     };
-    
-    // Emit to both sender and recipient
     socket.to(to).emit('receive_message', msgPayload);
     socket.emit('receive_message', msgPayload);
   });
@@ -232,13 +218,62 @@ io.on('connection', async (socket) => {
     if (idx > -1) userList.splice(idx, 1); else userList.push(socket.username);
     message.reactions.set(reaction, userList);
     await message.save();
-    
+
     if (message.isPrivate && message.to) {
       io.to(message.to).emit('message_updated', { messageId, reactions: Object.fromEntries(message.reactions) });
       io.to(message.senderId).emit('message_updated', { messageId, reactions: Object.fromEntries(message.reactions) });
     } else {
       io.to(message.room).emit('message_updated', { messageId, reactions: Object.fromEntries(message.reactions) });
     }
+  });
+
+  socket.on('pin_message', async ({ messageId }) => {
+    const message = await Message.findById(messageId);
+    if (!message) return;
+    message.isPinned = !message.isPinned;
+    await message.save();
+
+    if (message.isPrivate && message.to) {
+      io.to(message.to).emit('message_updated', { messageId, isPinned: message.isPinned });
+      io.to(message.senderId).emit('message_updated', { messageId, isPinned: message.isPinned });
+    } else {
+      io.to(message.room).emit('message_updated', { messageId, isPinned: message.isPinned });
+    }
+  });
+
+  socket.on('star_message', async ({ messageId }) => {
+    const message = await Message.findById(messageId);
+    if (!message) return;
+    message.isStarred = !message.isStarred;
+    await message.save();
+
+    if (message.isPrivate && message.to) {
+      io.to(message.to).emit('message_updated', { messageId, isStarred: message.isStarred });
+      io.to(message.senderId).emit('message_updated', { messageId, isStarred: message.isStarred });
+    } else {
+      io.to(message.room).emit('message_updated', { messageId, isStarred: message.isStarred });
+    }
+  });
+
+  socket.on('delete_message', async ({ messageId }) => {
+    const message = await Message.findById(messageId);
+    if (!message) return;
+
+    if (!message.deletedFor.includes(socket.email)) {
+      message.deletedFor.push(socket.email);
+      await message.save();
+    }
+
+    if (message.isPrivate && message.to) {
+      io.to(message.to).emit('message_updated', { messageId, deletedFor: message.deletedFor });
+      io.to(message.senderId).emit('message_updated', { messageId, deletedFor: message.deletedFor });
+    } else {
+      io.to(message.room).emit('message_updated', { messageId, deletedFor: message.deletedFor });
+    }
+  });
+
+  socket.on('clear_chat', async ({ withUserId }) => {
+    socket.emit('chat_cleared');
   });
 
   socket.on('request_account_deletion', async () => {
