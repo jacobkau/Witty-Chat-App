@@ -151,7 +151,6 @@ function formatDateDivider(ts) {
   return d.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 }
 
-// Helper to determine file type
 const getFileExtension = (name) => name?.split('.').pop()?.toLowerCase() || '';
 
 function AppWrapper() {
@@ -194,6 +193,7 @@ function App() {
   const [secretCode, setSecretCode] = useState('');
 
   const [chatInput, setChatInput] = useState('');
+  
   const [privateRecipient, setPrivateRecipient] = useState('');
   const [privateRecipientName, setPrivateRecipientName] = useState('');
   const [replyingTo, setReplyingTo] = useState(null); 
@@ -213,16 +213,18 @@ function App() {
 
   const { theme, toggleTheme } = useTheme();
 
-  const activeUser = users.find((u) => u.id === privateRecipient);
+  // Lookup user by email now
+  const activeUser = users.find((u) => u.email === privateRecipient);
   const activeUsername = activeUser ? activeUser.username : (privateRecipientName || 'User');
 
   const displayedMessages = messages.filter((msg) => {
     if (msg.deletedFor && msg.deletedFor.includes(myEmail)) return false;
 
     if (privateRecipient) {
+      // Match by EMAIL now
       const isMyPrivateMsg = msg.isPrivate && (
-        (msg.senderId === socket.id && msg.to === privateRecipient) || 
-        (msg.senderId === privateRecipient && msg.to === socket.id)
+        (msg.senderEmail === myEmail && msg.to === privateRecipient) || 
+        (msg.senderEmail === privateRecipient && msg.to === myEmail)
       );
       return isMyPrivateMsg;
     } else {
@@ -257,8 +259,9 @@ function App() {
       audioRef.current?.play().catch(() => {});
 
       if (lastMessage.isPrivate) {
-        if (privateRecipient !== lastMessage.senderId) {
-          setUnreadDMs(prev => ({ ...prev, [lastMessage.senderId]: (prev[lastMessage.senderId] || 0) + 1 }));
+        // Unread DM uses senderEmail now
+        if (privateRecipient !== lastMessage.senderEmail) {
+          setUnreadDMs(prev => ({ ...prev, [lastMessage.senderEmail]: (prev[lastMessage.senderEmail] || 0) + 1 }));
         }
       } else {
         if (privateRecipient || lastMessage.room !== currentRoom) {
@@ -312,6 +315,7 @@ function App() {
         finalMessage = `> ${replyingTo.sender}: ${replyingTo.message}\n\n${chatInput}`;
       }
 
+      // Send to the email address now
       if (privateRecipient) sendPrivateMessage(privateRecipient, finalMessage);
       else sendMessage(finalMessage);
       
@@ -327,6 +331,7 @@ function App() {
 
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
+    // Upload to the email address
     if (file) uploadFile(file, privateRecipient);
   };
 
@@ -345,15 +350,16 @@ function App() {
     }
   };
 
-  const startDM = (userId, userName) => {
-    if (userId === socket.id) return;
+  // 🚨 Pass email to startDM
+  const startDM = (userEmail, userName) => {
+    if (userEmail === myEmail) return;
     setReplyingTo(null);
-    setPrivateRecipient(userId);
+    setPrivateRecipient(userEmail); 
     setPrivateRecipientName(userName);
   };
 
   const handleReplyPrivately = (msg) => {
-    startDM(msg.senderId, msg.sender);
+    startDM(msg.senderEmail, msg.sender); 
     setReplyingTo(msg);
     setActiveMenu(null);
   };
@@ -522,18 +528,18 @@ function App() {
               Direct Messages
             </strong>
             <ul className="space-y-1">
-              {users.filter(u => u.id !== socket?.id).map((u) => (
+              {users.filter(u => u.email !== myEmail).map((u) => (
                 <li
                   key={u.id}
-                  onClick={() => startDM(u.id, u.username)}
-                  className={`flex items-center justify-between px-2 py-1.5 rounded cursor-pointer text-sm transition ${u.id === privateRecipient ? 'bg-blue-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                  onClick={() => startDM(u.email, u.username)}
+                  className={`flex items-center justify-between px-2 py-1.5 rounded cursor-pointer text-sm transition ${u.email === privateRecipient ? 'bg-blue-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
                 >
                   <div className="flex items-center gap-2 truncate">
                     <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
                     <span className="truncate">{u.username}</span>
                   </div>
-                  {unreadDMs[u.id] > 0 && (
-                    <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">{unreadDMs[u.id]}</span>
+                  {unreadDMs[u.email] > 0 && (
+                    <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">{unreadDMs[u.email]}</span>
                   )}
                 </li>
               ))}
@@ -556,14 +562,12 @@ function App() {
                 const showDateDivider = msgDate !== lastRenderedDate;
                 if (showDateDivider) lastRenderedDate = msgDate;
 
-                // 🚨 ADVANCED FILE TYPE LOGIC
                 const ext = getFileExtension(msg.fileName);
                 const isImage = msg.fileType?.startsWith('image') || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
                 const isPDF = msg.fileType?.includes('pdf') || ext === 'pdf';
                 const isVideo = msg.fileType?.startsWith('video') || ['mp4', 'webm', 'ogg'].includes(ext);
                 const isAudio = msg.fileType?.startsWith('audio') || ['mp3', 'wav', 'ogg'].includes(ext);
                 const isArchive = ['zip', 'rar', '7z', 'tar', 'gz'].includes(ext);
-                const isDoc = ['doc', 'docx'].includes(ext);
                 const isExcel = ['xls', 'xlsx', 'csv'].includes(ext);
 
                 return (
@@ -586,7 +590,7 @@ function App() {
                       <div className={`flex items-end gap-2 max-w-[85%] md:max-w-[70%] w-fit relative group ${isSent ? 'self-end flex-row-reverse' : 'self-start flex-row'}`}>
                         
                         <div 
-                          onClick={() => !isSent && startDM(msg.senderId, msg.sender)}
+                          onClick={() => !isSent && startDM(msg.senderEmail, msg.sender)}
                           className={`w-9 h-9 rounded-full bg-gray-400 text-white flex items-center justify-center font-bold text-sm flex-shrink-0 ${!isSent ? 'cursor-pointer hover:bg-blue-500 transition-colors' : ''}`}
                         >
                           {getInitials(msg.sender)}
@@ -594,7 +598,7 @@ function App() {
 
                         <div className="flex flex-col min-w-0">
                           <div 
-                            onClick={() => !isSent && startDM(msg.senderId, msg.sender)}
+                            onClick={() => !isSent && startDM(msg.senderEmail, msg.sender)}
                             className={`text-xs font-bold mb-1 ${isSent ? 'text-right text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:text-blue-600 cursor-pointer hover:underline'}`}
                           >
                             {isSent ? 'You' : msg.sender}
@@ -628,7 +632,6 @@ function App() {
                                 )
                               )}
                               
-                              {/* 🚨 FILE RENDERING LOGIC FOR ALL TYPES */}
                               {msg.fileUrl && (
                                 <>
                                   {isImage && (
@@ -670,7 +673,6 @@ function App() {
                                     </div>
                                   )}
 
-                                  {/* Other Files (Documents, Archives, etc.) */}
                                   {!isImage && !isPDF && !isVideo && !isAudio && (
                                     <a 
                                       href={msg.fileUrl} 
