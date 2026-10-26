@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSocket } from './socket/socket';
 import { ThemeContext, useTheme } from './context/ThemeContext';
-import { Trash2, Paperclip, Moon, Sun, Menu, X, Hand, MessageCircle, LogOut, UserX } from 'lucide-react';
+import { Trash2, Paperclip, Moon, Sun, Menu, X, Hand, MessageCircle, LogOut, UserX, Loader2 } from 'lucide-react';
 
 const EMOJI_REACTIONS = ['👍', '❤️', '😂', '😮', '😢'];
 
@@ -276,11 +276,20 @@ function App() {
               className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
+            
             <button
               type="submit"
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition shadow-md"
+              disabled={connectionStatus === 'connecting'}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition shadow-md flex justify-center items-center gap-2 disabled:opacity-70"
             >
-              Join WittyChat
+              {connectionStatus === 'connecting' ? (
+                <>
+                  <Loader2 className="animate-spin" size={20} />
+                  Connecting...
+                </>
+              ) : (
+                'Join WittyChat'
+              )}
             </button>
           </form>
           <p className="text-center text-gray-400 text-sm mt-6">
@@ -351,7 +360,6 @@ function App() {
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2 w-full flex flex-col">
               
               {messages.map((msg) => {
-                // 🚨 THE FIX: Compare emails instead of temporary socket IDs
                 const isSent = msg.senderEmail === myEmail;
                 const isSystem = msg.sender === 'System';
                 
