@@ -205,6 +205,8 @@ function App() {
   const fileInputRef = useRef(null);
 
   const { theme, toggleTheme } = useTheme();
+  const activeUser = users.find((u) => u.id === privateRecipient);
+  const activeUsername = activeUser ? activeUser.username : 'User';
 
   useEffect(() => {
     if ('Notification' in window) {
@@ -320,8 +322,14 @@ function App() {
 
   const startDM = (userId) => {
     if (userId === socket.id) return;
+    setReplyingTo(null); 
     setPrivateRecipient(userId);
-    setReplyingTo(null);
+  };
+
+  const handleReplyPrivately = (msg) => {
+    startDM(msg.senderId);
+    setTimeout(() => setReplyingTo(msg), 50);
+    setActiveMenu(null);
   };
 
   const handleCopy = (text) => {
@@ -400,7 +408,7 @@ function App() {
   }
 
   const activeTitle = privateRecipient 
-    ? `Private: ${users.find(u => u.id === privateRecipient)?.username || 'User'}` 
+    ? `Private: ${activeUsername}` 
     : currentRoom;
 
   let lastRenderedDate = null;
@@ -563,7 +571,6 @@ function App() {
                               }}
                               className={`px-3 py-2 rounded-2xl shadow-sm break-words cursor-pointer transition-all hover:opacity-90 ${isSent ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-bl-sm border border-gray-200 dark:border-gray-700'}`}
                             >
-                              {/* Handle formatting for Replied Messages */}
                               {msg.message && (
                                 msg.message.startsWith('> ') ? (
                                   <>
@@ -595,7 +602,7 @@ function App() {
                                 <button onClick={(e) => { e.stopPropagation(); setReplyingTo(msg); setActiveMenu(null); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><Reply size={14}/> Reply</button>
                                 
                                 {!privateRecipient && !isSent && (
-                                  <button onClick={(e) => { e.stopPropagation(); startDM(msg.senderId); setReplyingTo(msg); setActiveMenu(null); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><MessageCircle size={14}/> Reply Privately</button>
+                                  <button onClick={(e) => { e.stopPropagation(); handleReplyPrivately(msg); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><MessageCircle size={14}/> Reply Privately</button>
                                 )}
                                 
                                 <button onClick={(e) => { e.stopPropagation(); handleCopy(msg.message); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><Copy size={14}/> Copy</button>
@@ -645,7 +652,7 @@ function App() {
               <form onSubmit={handleSend} className="flex items-center gap-2">
                 <input
                   type="text"
-                  placeholder={privateRecipient ? `Message ${users.find((u) => u.id === privateRecipient)?.username}...` : 'Type a message...'}
+                  placeholder={privateRecipient ? `Message ${activeUsername}...` : 'Type a message...'}
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
                   className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 transition text-sm"
