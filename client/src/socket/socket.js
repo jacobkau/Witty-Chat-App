@@ -49,12 +49,18 @@ export const useSocket = () => {
 
   const uploadFile = async (file, privateRecipientId = null) => {
     if (!username || !socket.id) return;
+    
+    if (file.size > 10 * 1024 * 1024) {
+      alert("File is too large. Maximum size is 10MB.");
+      return;
+    }
+
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onloadend = async () => {
       const base64String = reader.result;
       try {
-        await fetch(`${SOCKET_URL}/upload`, {
+        const response = await fetch(`${SOCKET_URL}/upload`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -67,8 +73,15 @@ export const useSocket = () => {
             to: privateRecipientId
           }),
         });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Upload failed');
+        }
+        
       } catch (error) {
         console.error('Error uploading file:', error);
+        alert(`Upload failed: ${error.message}`);
       }
     };
   };
