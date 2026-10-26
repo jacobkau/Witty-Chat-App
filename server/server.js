@@ -90,7 +90,15 @@ io.use(async (socket, next) => {
 app.post('/upload', async (req, res) => {
   try {
     const { file, username, socketId, room, email, isPrivate, to } = req.body;
-    const result = await cloudinary.uploader.upload(file, { folder: 'witty_chat_uploads' });
+    
+    if (!file) {
+      return res.status(400).json({ error: "No file data received" });
+    }
+
+    const result = await cloudinary.uploader.upload(file, { 
+      folder: 'witty_chat_uploads',
+      resource_type: 'auto' 
+    });
 
     const message = new Message({
       sender: username,
@@ -115,10 +123,13 @@ app.post('/upload', async (req, res) => {
 
     res.status(201).json({ message: 'File uploaded successfully', data: message.toObject() });
   } catch (error) {
-    res.status(500).send('Server error during file upload.');
+    console.error("Cloudinary Upload Error:", error);
+    res.status(500).json({ 
+      error: error.message || "Internal Server Error during upload",
+      details: error
+    });
   }
 });
-
 const getUsersInRoom = (room) => {
   const roomSockets = io.sockets.adapter.rooms.get(room);
   if (!roomSockets) return [];
