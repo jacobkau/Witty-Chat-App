@@ -42,6 +42,10 @@ export const useSocket = () => {
   const sendMessage = (message) => socket.emit('send_message', { message });
   const sendPrivateMessage = (to, message) => socket.emit('private_message', { to, message });
   const sendReaction = (messageId, reaction) => socket.emit('react_to_message', { messageId, reaction });
+  const pinMessage = (messageId) => socket.emit('pin_message', { messageId });
+  const starMessage = (messageId) => socket.emit('star_message', { messageId });
+  const deleteMessage = (messageId) => socket.emit('delete_message', { messageId });
+  const clearChat = (withUserId) => socket.emit('clear_chat', { withUserId });
 
   const uploadFile = async (file, privateRecipientId = null) => {
     if (!username || !socket.id) return;
@@ -53,11 +57,11 @@ export const useSocket = () => {
         await fetch(`${SOCKET_URL}/upload`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            file: base64String, 
-            username, 
-            socketId: socket.id, 
-            room: currentRoom, 
+          body: JSON.stringify({
+            file: base64String,
+            username,
+            socketId: socket.id,
+            room: currentRoom,
             email: myEmail,
             isPrivate: !!privateRecipientId,
             to: privateRecipientId
@@ -90,12 +94,28 @@ export const useSocket = () => {
       setConnectionStatus('error');
       socket.disconnect();
     };
-    
+
     const onReceiveMessage = (message) => setMessages(prev => [...prev, message]);
     const onUserList = (userList) => setUsers(userList);
     const onTypingUsers = (typing) => setTypingUsers(typing);
-    const onMessageUpdated = ({ messageId, reactions }) => {
-      setMessages(prev => prev.map(msg => msg._id === messageId ? { ...msg, reactions } : msg));
+
+    const onMessageUpdated = ({ messageId, reactions, isPinned, isStarred, deletedFor }) => {
+      setMessages(prev => prev.map(msg => {
+        if (msg._id === messageId) {
+          return {
+            ...msg,
+            ...(reactions !== undefined && { reactions }),
+            ...(isPinned !== undefined && { isPinned }),
+            ...(isStarred !== undefined && { isStarred }),
+            ...(deletedFor !== undefined && { deletedFor }),
+          };
+        }
+        return msg;
+      }));
+    };
+
+    const onChatCleared = () => {
+      setMessages(prev => prev.filter(msg => !msg.isPrivate));
     };
 
     const onRoomList = (rooms) => setAvailableRooms(rooms);
@@ -143,6 +163,7 @@ export const useSocket = () => {
     socket.on('user_list', onUserList);
     socket.on('typing_users', onTypingUsers);
     socket.on('message_updated', onMessageUpdated);
+    socket.on('chat_cleared', onChatCleared);
     socket.on('room_list', onRoomList);
     socket.on('message_history', onMessageHistory);
     socket.on('room_error', onRoomError);
@@ -159,6 +180,7 @@ export const useSocket = () => {
       socket.off('user_list', onUserList);
       socket.off('typing_users', onTypingUsers);
       socket.off('message_updated', onMessageUpdated);
+      socket.off('chat_cleared', onChatCleared);
       socket.off('room_list', onRoomList);
       socket.off('message_history', onMessageHistory);
       socket.off('room_error', onRoomError);
@@ -172,6 +194,7 @@ export const useSocket = () => {
     socket, isConnected, messages, users, typingUsers, connectionStatus, username, myEmail, myId,
     connect, disconnect, sendMessage, sendPrivateMessage, sendReaction, uploadFile,
     currentRoom, availableRooms, joinRoom, createRoom, deleteRoom, deleteAccount,
+    pinMessage, starMessage, deleteMessage, clearChat,
   };
 };
 
