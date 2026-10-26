@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSocket } from './socket/socket';
 import { ThemeContext, useTheme } from './context/ThemeContext';
-import { Trash2, Paperclip, Moon, Sun, Menu, X, Hand, MessageCircle, LogOut, UserX, Loader2 } from 'lucide-react';
+import { Trash2, Paperclip, Moon, Sun, Menu, X, Hand, MessageCircle, LogOut, UserX, Loader2, ArrowLeft } from 'lucide-react';
 
 const EMOJI_REACTIONS = ['👍', '❤️', '😂', '😮', '😢'];
 
@@ -42,35 +42,55 @@ const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen
       {isOpen && <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={onClose} />}
       <div className={`fixed md:static inset-y-0 left-0 z-50 w-60 bg-gray-800 text-gray-100 p-5 flex flex-col border-r border-gray-700 transform transition-transform duration-300 md:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex justify-between items-center mb-5 md:block">
-          <h3 className="text-xl font-bold">Chat Rooms</h3>
+          <h3 className="text-xl font-bold">WittyChat</h3>
           <button onClick={onClose} className="md:hidden text-gray-300 hover:text-white p-1 rounded hover:bg-gray-700">
             <X size={22} />
           </button>
         </div>
 
-        <ul className="flex-1 overflow-y-auto space-y-1">
-          {rooms.map((room) => (
-            <li
-              key={room.name}
-              onClick={() => handleRoomClick(room)}
-              className={`flex justify-between items-center px-3 py-2 rounded cursor-pointer transition ${room.name === current ? 'bg-blue-600 font-bold' : 'hover:bg-gray-700'}`}
-            >
-              <span className="truncate">{room.name}</span>
-              {room.name !== 'General' && room.creatorId === myId && (
-                <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteRoom(room.name); }} className="text-red-400 hover:text-red-300 p-1">
-                  <Trash2 size={16} />
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
+        <div className="flex-1 overflow-y-auto space-y-4">
+          {/* PUBLIC ROOM */}
+          <div>
+            <strong className="text-xs uppercase tracking-wide text-gray-400 mb-2 block">Public Room</strong>
+            <ul className="space-y-1">
+              <li
+                onClick={() => handleRoomClick({ name: 'General', creatorId: 'system' })}
+                className={`flex justify-between items-center px-3 py-2 rounded cursor-pointer transition ${current === 'General' ? 'bg-blue-600 font-bold' : 'hover:bg-gray-700'}`}
+              >
+                <span className="truncate">🌍 General</span>
+              </li>
+            </ul>
+          </div>
 
+          {/* CUSTOM ROOMS */}
+          <div>
+            <strong className="text-xs uppercase tracking-wide text-gray-400 mb-2 block">Custom Rooms</strong>
+            <ul className="space-y-1">
+              {rooms.filter(r => r.name !== 'General').map((room) => (
+                <li
+                  key={room.name}
+                  onClick={() => handleRoomClick(room)}
+                  className={`flex justify-between items-center px-3 py-2 rounded cursor-pointer transition ${room.name === current ? 'bg-blue-600 font-bold' : 'hover:bg-gray-700'}`}
+                >
+                  <span className="truncate">{room.name}</span>
+                  {room.creatorId === myId && (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteRoom(room.name); }} className="text-red-400 hover:text-red-300 p-1">
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        {/* CREATE ROOM */}
         <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-gray-600">
           <input
             type="text"
             value={newRoom}
             onChange={(e) => setNewRoom(e.target.value)}
-            placeholder="Room name..."
+            placeholder="New room name..."
             className="w-full px-3 py-2 rounded bg-gray-700 text-white placeholder-gray-400 focus:outline-none text-sm"
           />
           <button onClick={handleCreate} className="w-full py-2 bg-blue-600 hover:bg-blue-700 rounded text-white font-bold transition mt-1">
@@ -239,6 +259,7 @@ function App() {
 
   const handleLeaveRoom = () => {
     joinRoom('General');
+    setPrivateRecipient(''); 
   };
 
   if (!isConnected) {
@@ -276,20 +297,14 @@ function App() {
               className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
-            
             <button
               type="submit"
               disabled={connectionStatus === 'connecting'}
               className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition shadow-md flex justify-center items-center gap-2 disabled:opacity-70"
             >
               {connectionStatus === 'connecting' ? (
-                <>
-                  <Loader2 className="animate-spin" size={20} />
-                  Connecting...
-                </>
-              ) : (
-                'Join WittyChat'
-              )}
+                <><Loader2 className="animate-spin" size={20} /> Connecting...</>
+              ) : ('Join WittyChat')}
             </button>
           </form>
           <p className="text-center text-gray-400 text-sm mt-6">
@@ -299,6 +314,11 @@ function App() {
       </div>
     );
   }
+
+  // Determine active title based on mode
+  const activeTitle = privateRecipient 
+    ? `Private: ${users.find(u => u.id === privateRecipient)?.username || 'User'}` 
+    : currentRoom;
 
   let lastRenderedDate = null;
 
@@ -312,8 +332,15 @@ function App() {
         myEmail={myEmail}
         onClose={() => setIsMobileMenuOpen(false)}
         handleDeleteRoom={handleDeleteRoom}
-        onJoin={(room, code) => { joinRoom(room, code); setIsMobileMenuOpen(false); }}
-        onCreate={(room) => { createRoom(room); setIsMobileMenuOpen(false); }}
+        onJoin={(room, code) => { 
+          joinRoom(room, code); 
+          setPrivateRecipient(''); 
+          setIsMobileMenuOpen(false); 
+        }}
+        onCreate={(room) => { 
+          createRoom(room); 
+          setIsMobileMenuOpen(false); 
+        }}
       />
 
       <div className="flex flex-col h-screen min-w-0">
@@ -322,8 +349,20 @@ function App() {
             <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden mr-3 text-gray-700 dark:text-gray-200 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition">
               <Menu size={22} />
             </button>
-            <h2 className="text-lg md:text-xl font-bold truncate">
-              WittyChat: <span className="text-blue-600 dark:text-blue-400">{currentRoom}</span>
+            
+            {/* Back Button if not in General */}
+            {currentRoom !== 'General' && !privateRecipient && (
+              <button onClick={() => handleLeaveRoom()} className="mr-3 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 flex items-center text-sm font-semibold">
+                <ArrowLeft size={16} className="mr-1" /> Back
+              </button>
+            )}
+
+            <h2 className="text-lg md:text-xl font-bold truncate flex items-center gap-2">
+              {privateRecipient ? (
+                <><MessageCircle size={20} className="text-blue-500" /> {activeTitle}</>
+              ) : (
+                <>WittyChat: <span className="text-blue-600 dark:text-blue-400">{activeTitle}</span></>
+              )}
             </h2>
           </div>
           <div className="flex items-center gap-2 md:gap-3">
@@ -338,12 +377,13 @@ function App() {
         </header>
 
         <div className="flex flex-row flex-1 overflow-hidden">
-          <aside className="hidden sm:flex flex-col w-44 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 overflow-y-auto">
+          {/* SIDEBAR: ONLINE USERS & DMs */}
+          <aside className="hidden sm:flex flex-col w-48 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 overflow-y-auto">
             <strong className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
-              Online ({users.length})
+              Direct Messages ({users.length})
             </strong>
             <ul className="space-y-1">
-              {users.map((u) => u.id !== socket?.id && (
+              {users.filter(u => u.id !== socket?.id).map((u) => (
                 <li
                   key={u.id}
                   onClick={() => setPrivateRecipient(privateRecipient === u.id ? '' : u.id)}
@@ -353,6 +393,9 @@ function App() {
                   <span className="truncate">{u.username}</span>
                 </li>
               ))}
+              {users.length === 1 && (
+                <li className="text-xs text-gray-400 text-center mt-2">No other users online</li>
+              )}
             </ul>
           </aside>
 
@@ -360,9 +403,19 @@ function App() {
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2 w-full flex flex-col">
               
               {messages.map((msg) => {
+                // Filter messages based on mode
                 const isSent = msg.senderEmail === myEmail;
                 const isSystem = msg.sender === 'System';
-                
+                if (privateRecipient) {
+                   const isMyPrivateMsg = msg.isPrivate && (
+                     (msg.senderId === socket.id && msg.to === privateRecipient) || 
+                     (msg.senderId === privateRecipient && msg.to === socket.id)
+                   );
+                   if (!isMyPrivateMsg) return null;
+                } else {
+                   if (msg.isPrivate) return null;
+                }
+
                 const rawDate = msg.createdAt || msg.id || new Date().toISOString();
                 const dateObj = new Date(rawDate);
                 const msgDate = isNaN(dateObj.getTime()) ? 'Unknown Date' : dateObj.toDateString();
@@ -432,13 +485,7 @@ function App() {
                   {typingUsers.join(', ')} is typing...
                 </div>
               )}
-              {privateRecipient && (
-                <div className="text-xs text-blue-600 dark:text-blue-400 mb-1 flex items-center gap-1 flex-wrap">
-                  <MessageCircle size={12} />
-                  Private chat with <strong>{users.find((u) => u.id === privateRecipient)?.username}</strong>
-                  <button onClick={() => setPrivateRecipient('')} className="ml-2 text-red-500 hover:underline">cancel</button>
-                </div>
-              )}
+              
               <form onSubmit={handleSend} className="flex items-center gap-2">
                 <input
                   type="text"
@@ -461,7 +508,7 @@ function App() {
 
         <div className="px-4 py-3 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex gap-2">
           <button onClick={handleLeaveRoom} className="flex-1 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-semibold transition flex items-center justify-center gap-2">
-            <LogOut size={16} /> Leave Room
+            <LogOut size={16} /> {privateRecipient ? 'Back to Room' : 'Leave Room'}
           </button>
           <button onClick={handleDeleteAccount} className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition flex items-center justify-center gap-2">
             <UserX size={16} /> Leave App & Delete Account
