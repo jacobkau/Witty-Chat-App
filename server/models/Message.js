@@ -9,14 +9,10 @@ const messageSchema = new mongoose.Schema(
     room: { type: String, required: true, default: 'General' },
     isPrivate: { type: Boolean, default: false },
     to: { type: String, required: false },
-    isPinned: { type: Boolean, default: false }, 
-    isStarred: { type: Boolean, default: false }, 
-    deletedFor: [{ type: String }], 
-    reactions: {
-      type: Map,
-      of: [String], 
-      default: () => new Map(),
-    },
+    isPinned: { type: Boolean, default: false },
+    isStarred: { type: Boolean, default: false },
+    deletedFor: [{ type: String }],
+    reactions: { type: Map, of: [String], default: () => new Map() },
     fileUrl: { type: String, required: false },
     fileName: { type: String, required: false },
     fileType: { type: String, required: false },
@@ -24,5 +20,4 @@ const messageSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-const Message = mongoose.model('Message', messageSchema);
-module.exports = Message;
+module.exports = mongoose.model('Message', messageSchema);
