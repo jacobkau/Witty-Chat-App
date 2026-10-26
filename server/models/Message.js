@@ -8,7 +8,10 @@ const messageSchema = new mongoose.Schema(
     message: { type: String, required: false },
     room: { type: String, required: true, default: 'General' },
     isPrivate: { type: Boolean, default: false },
-    to: { type: String, required: false }, 
+    to: { type: String, required: false },
+    isPinned: { type: Boolean, default: false }, 
+    isStarred: { type: Boolean, default: false }, 
+    deletedFor: [{ type: String }], 
     reactions: {
       type: Map,
       of: [String], 
