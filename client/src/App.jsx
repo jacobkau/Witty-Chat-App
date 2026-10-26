@@ -4,7 +4,7 @@ import { ThemeContext, useTheme } from './context/ThemeContext';
 import { 
   Trash2, Paperclip, Moon, Sun, Menu, X, MessageCircle, 
   LogOut, UserX, Loader2, ArrowLeft, Users, Reply, Copy, Pin, 
-  Star, Share2, Info, ShieldAlert, Download, MoreVertical, Lock
+  Star, Share2, Info, ShieldAlert, Download, MoreVertical 
 } from 'lucide-react';
 
 const EMOJI_REACTIONS = ['👍', '❤️', '😂', '😮', '😢'];
@@ -347,7 +347,10 @@ function App() {
   const handleShare = (msg) => {
     const text = msg.message || msg.fileUrl;
     if (navigator.share) {
-      navigator.share({ title: 'WittyChat Message', text: text }).catch(console.error);
+      navigator.share({
+        title: 'WittyChat Message',
+        text: text,
+      }).catch(console.error);
     } else {
       navigator.clipboard.writeText(text);
       alert('Message copied to clipboard for sharing!');
@@ -401,7 +404,6 @@ function App() {
     : currentRoom;
 
   let lastRenderedDate = null;
-  const pinnedMsgs = messages.filter(m => m.isPinned && (!m.isPrivate || m.to === privateRecipient || m.senderId === socket.id));
 
   return (
     <div className="h-screen grid grid-cols-1 md:grid-cols-[240px_1fr] bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 overflow-hidden">
@@ -435,7 +437,7 @@ function App() {
               {privateRecipient ? (
                 <><MessageCircle size={20} className="text-blue-500" /> {activeTitle}</>
               ) : (
-                <>WittyChat: <span className="text-blue-600 dark:text-blue-400">{activeTitle}</span></>
+                <>WittyChat <span className="text-blue-600 dark:text-blue-400">{activeTitle}</span></>
               )}
             </h2>
           </div>
@@ -490,17 +492,6 @@ function App() {
           </aside>
 
           <div className="flex flex-col flex-1 min-w-0 relative">
-            {/* Pinned Messages Banner */}
-            {pinnedMsgs.length > 0 && (
-              <div className="bg-blue-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-2 flex items-center gap-2">
-                <Pin size={16} className="text-blue-500" />
-                <div className="flex-1 truncate text-sm text-gray-700 dark:text-gray-300">
-                  <strong>{pinnedMsgs[pinnedMsgs.length - 1].sender}:</strong> {pinnedMsgs[pinnedMsgs.length - 1].message}
-                </div>
-                <span className="text-xs text-blue-500 cursor-pointer hover:underline">View all</span>
-              </div>
-            )}
-
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2 w-full flex flex-col">
               
               {messages.map((msg) => {
@@ -527,17 +518,6 @@ function App() {
                 
                 const showDateDivider = msgDate !== lastRenderedDate;
                 if (showDateDivider) lastRenderedDate = msgDate;
-
-                // Formatting for WhatsApp-style reply quote
-                let displayMessage = msg.message;
-                let quotedMsg = null;
-                if (msg.message && msg.message.startsWith('> ')) {
-                  const parts = msg.message.split('\n\n');
-                  if (parts.length > 1) {
-                    quotedMsg = parts[0].substring(2); // Remove "> "
-                    displayMessage = parts.slice(1).join('\n\n');
-                  }
-                }
 
                 return (
                   <React.Fragment key={msg._id || msg.id || Math.random()}>
@@ -583,14 +563,24 @@ function App() {
                               }}
                               className={`px-3 py-2 rounded-2xl shadow-sm break-words cursor-pointer transition-all hover:opacity-90 ${isSent ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-bl-sm border border-gray-200 dark:border-gray-700'}`}
                             >
-                              {/* WhatsApp-style Quote */}
-                              {quotedMsg && (
-                                <div className={`border-l-4 pl-2 mb-1 text-sm italic opacity-90 ${isSent ? 'border-blue-300 text-blue-100' : 'border-gray-400 text-gray-500 dark:text-gray-400'}`}>
-                                  {quotedMsg}
-                                </div>
+                              {/* Handle formatting for Replied Messages */}
+                              {msg.message && (
+                                msg.message.startsWith('> ') ? (
+                                  <>
+                                    <div className="bg-black/10 dark:bg-black/20 p-2 rounded-lg mb-2 border-l-4 border-yellow-400 text-xs">
+                                      <span className="font-bold text-yellow-600 dark:text-yellow-400 block mb-1">
+                                        {msg.message.split('\n')[0].replace('> ', '').split(':')[0]}
+                                      </span>
+                                      <span className="opacity-80 italic truncate block">
+                                        {msg.message.split('\n')[0].replace('> ', '').split(':').slice(1).join(':').trim()}
+                                      </span>
+                                    </div>
+                                    <p className="whitespace-pre-wrap">{msg.message.split('\n\n').slice(1).join('\n\n')}</p>
+                                  </>
+                                ) : (
+                                  <p className="whitespace-pre-wrap">{msg.message}</p>
+                                )
                               )}
-                              
-                              {displayMessage && <p className="whitespace-pre-wrap">{displayMessage}</p>}
                               {msg.fileUrl && (msg.fileType?.startsWith('image') || msg.fileType?.includes('jpg') || msg.fileType?.includes('png') ? (
                                 <img src={msg.fileUrl} alt={msg.fileName} onClick={(e) => { e.stopPropagation(); window.open(msg.fileUrl, '_blank'); }} className="max-w-full max-h-72 rounded-lg mt-1 cursor-pointer" />
                               ) : (
@@ -601,11 +591,13 @@ function App() {
                             </div>
 
                             {activeMenu === (msg._id || msg.id) && (
-                              <div className={`absolute z-50 w-44 bg-white dark:bg-gray-800 rounded-md shadow-xl border border-gray-200 dark:border-gray-700 py-1 ${isSent ? 'right-full mr-2' : 'left-full ml-2'} top-0`}>
+                              <div className={`absolute z-50 w-48 bg-white dark:bg-gray-800 rounded-md shadow-xl border border-gray-200 dark:border-gray-700 py-1 ${isSent ? 'right-full mr-2' : 'left-full ml-2'} top-0`}>
                                 <button onClick={(e) => { e.stopPropagation(); setReplyingTo(msg); setActiveMenu(null); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><Reply size={14}/> Reply</button>
-                                {!isSent && (
-                                  <button onClick={(e) => { e.stopPropagation(); startDM(msg.senderId); setActiveMenu(null); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><Lock size={14}/> Reply Privately</button>
+                                
+                                {!privateRecipient && !isSent && (
+                                  <button onClick={(e) => { e.stopPropagation(); startDM(msg.senderId); setReplyingTo(msg); setActiveMenu(null); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><MessageCircle size={14}/> Reply Privately</button>
                                 )}
+                                
                                 <button onClick={(e) => { e.stopPropagation(); handleCopy(msg.message); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><Copy size={14}/> Copy</button>
                                 <button onClick={(e) => { e.stopPropagation(); handlePin(msg._id || msg.id); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><Pin size={14}/> {isPinned ? 'Unpin' : 'Pin'}</button>
                                 <button onClick={(e) => { e.stopPropagation(); handleStar(msg._id || msg.id); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><Star size={14}/> {isStarred ? 'Unstar' : 'Star'}</button>
