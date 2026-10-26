@@ -36,19 +36,12 @@ export const useSocket = () => {
     setIsConnected(false);
     setUsername('');
     setMyEmail('');
+    setConnectionStatus('disconnected');
   };
 
-  const sendMessage = (message) => {
-    socket.emit('send_message', { message });
-  };
-
-  const sendPrivateMessage = (to, message) => {
-    socket.emit('private_message', { to, message });
-  };
-
-  const sendReaction = (messageId, reaction) => {
-    socket.emit('react_to_message', { messageId, reaction });
-  };
+  const sendMessage = (message) => socket.emit('send_message', { message });
+  const sendPrivateMessage = (to, message) => socket.emit('private_message', { to, message });
+  const sendReaction = (messageId, reaction) => socket.emit('react_to_message', { messageId, reaction });
 
   const uploadFile = async (file) => {
     if (!username || !socket.id) return;
@@ -60,13 +53,7 @@ export const useSocket = () => {
         await fetch(`${SOCKET_URL}/upload`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            file: base64String,
-            username: username,
-            socketId: socket.id,
-            room: currentRoom,
-            email: myEmail, 
-          }),
+          body: JSON.stringify({ file: base64String, username, socketId: socket.id, room: currentRoom, email: myEmail }),
         });
       } catch (error) {
         console.error('Error uploading file:', error);
@@ -74,21 +61,10 @@ export const useSocket = () => {
     };
   };
 
-  const joinRoom = (roomName, secretCode = '') => {
-    socket.emit('join_room', { roomName, secretCode });
-  };
-
-  const createRoom = (roomName) => {
-    socket.emit('create_room', { roomName });
-  };
-
-  const deleteRoom = (roomName) => {
-    socket.emit('delete_room', roomName);
-  };
-
-  const deleteAccount = () => {
-    socket.emit('request_account_deletion');
-  };
+  const joinRoom = (roomName, secretCode = '') => socket.emit('join_room', { roomName, secretCode });
+  const createRoom = (roomName) => socket.emit('create_room', { roomName });
+  const deleteRoom = (roomName) => socket.emit('delete_room', roomName);
+  const deleteAccount = () => socket.emit('request_account_deletion');
 
   useEffect(() => {
     const onConnect = () => {
@@ -100,13 +76,13 @@ export const useSocket = () => {
       setIsConnected(false);
       setConnectionStatus('disconnected');
     };
-    
-    const onAuthError = (msg) => {
-      alert(msg);
+
+    const onConnectError = (err) => {
+      alert(`Login Failed: ${err.message}`);
       setConnectionStatus('error');
       socket.disconnect();
     };
-
+    
     const onReceiveMessage = (message) => setMessages(prev => [...prev, message]);
     const onUserList = (userList) => setUsers(userList);
     const onTypingUsers = (typing) => setTypingUsers(typing);
@@ -117,27 +93,22 @@ export const useSocket = () => {
     const onRoomList = (rooms) => setAvailableRooms(rooms);
     const onMessageHistory = (history) => setMessages(history);
     const onRoomError = (msg) => alert(msg);
-    
-    const onRoomJoined = (roomName) => {
-      setCurrentRoom(roomName);
-      setMessages([]);
-    };
+    const onRoomJoined = (roomName) => { setCurrentRoom(roomName); setMessages([]); };
 
     const onRoomCreatedSuccess = ({ roomName, secretCode, creatorEmail, creatorName }) => {
       const templateParams = {
         from_name: 'WittyChat System',
         to_email: creatorEmail,
         subject: `Your Secret Code for Room: ${roomName}`,
-        message: `Hello ${creatorName},\n\nYou have successfully created the room "${roomName}".\n\nYour secret code is: ${secretCode}\n\nShare this code with anyone you want to invite.`,
+        message: `Hello ${creatorName},\n\nYou created "${roomName}".\n\nSecret code: ${secretCode}`,
       };
-
       const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
       const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
       const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
 
       emailjs.send(serviceId, templateId, templateParams, publicKey)
-        .then(() => alert(`Room created! The secret code has been emailed to ${creatorEmail}.`))
-        .catch(() => alert(`Room created! Failed to send email.\n\nYour secret code is: ${secretCode}`));
+        .then(() => alert(`Room created! Code emailed to ${creatorEmail}.`))
+        .catch(() => alert(`Room created! Failed to send email.\n\nYour code: ${secretCode}`));
     };
 
     const onAccountDeleted = ({ email, username }) => {
@@ -145,23 +116,20 @@ export const useSocket = () => {
         from_name: 'WittyChat System',
         to_email: email,
         subject: `Goodbye from WittyChat, ${username}`,
-        message: `Hello ${username},\n\nWe're sad to see you go. Your account has been successfully deleted from our database. Your chat messages will remain visible to others.\n\nThank you for using WittyChat.`,
+        message: `Hello ${username},\n\nYour account has been deleted.`,
       };
-
       const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
       const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
       const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
 
-      emailjs.send(serviceId, templateId, templateParams, publicKey)
-        .catch((err) => console.error('Failed to send goodbye email:', err));
-        
+      emailjs.send(serviceId, templateId, templateParams, publicKey).catch(() => {});
       alert('Your account has been deleted. You have left WittyChat.');
       window.location.reload();
     };
 
     socket.on('connect', onConnect);
+    socket.on('connect_error', onConnectError); 
     socket.on('disconnect', onDisconnect);
-    socket.on('auth_error', onAuthError);
     socket.on('receive_message', onReceiveMessage);
     socket.on('private_message', onReceiveMessage);
     socket.on('user_list', onUserList);
@@ -176,8 +144,8 @@ export const useSocket = () => {
 
     return () => {
       socket.off('connect', onConnect);
+      socket.off('connect_error', onConnectError);
       socket.off('disconnect', onDisconnect);
-      socket.off('auth_error', onAuthError);
       socket.off('receive_message', onReceiveMessage);
       socket.off('private_message', onReceiveMessage);
       socket.off('user_list', onUserList);
