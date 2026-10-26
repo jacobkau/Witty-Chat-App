@@ -1,3 +1,18 @@
+The issue you are experiencing is a classic **Race Condition** combined with how React handles State updates.
+
+When you click "Reply Privately", here is what happens in your code:
+1. `startDM(msg.senderId)` is called. It updates `privateRecipient`.
+2. `setTimeout(() => setReplyingTo(msg), 50)` is called.
+3. React re-renders the component. However, the `users` array from the socket may not have been fully processed yet, or the `activeUser` variable is evaluating to `undefined` during that very first millisecond. Because it's `undefined`, the UI falls back to the word `"User"` and the input placeholder becomes `"Message User..."`.
+4. It stays that way until you refresh (which forces the socket to send the `user_list` again, updating the array).
+
+Also, the reason the user wasn't listed in the left sidebar is that **Socket.io's `user_list` only sends users in the *current room***. If you are in General, but the other user joined a Custom Room, they disappear from your DM list.
+
+Here is the complete, corrected `App.jsx`. I have removed the `setTimeout` and implemented a robust fallback system so the name resolves immediately.
+
+### `client/src/App.jsx` (Full File)
+
+```jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { useSocket } from './socket/socket';
 import { ThemeContext, useTheme } from './context/ThemeContext';
@@ -189,6 +204,7 @@ function App() {
 
   const [chatInput, setChatInput] = useState('');
   const [privateRecipient, setPrivateRecipient] = useState('');
+  const [privateRecipientName, setPrivateRecipientName] = useState(''); // Fallback name
   const [replyingTo, setReplyingTo] = useState(null); 
   
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
@@ -205,8 +221,10 @@ function App() {
   const fileInputRef = useRef(null);
 
   const { theme, toggleTheme } = useTheme();
+
+  // Robust logic to find the active username
   const activeUser = users.find((u) => u.id === privateRecipient);
-  const activeUsername = activeUser ? activeUser.username : 'User';
+  const activeUsername = activeUser ? activeUser.username : (privateRecipientName || 'User');
 
   useEffect(() => {
     if ('Notification' in window) {
@@ -317,18 +335,20 @@ function App() {
   const handleLeaveRoom = () => {
     joinRoom('General');
     setPrivateRecipient(''); 
+    setPrivateRecipientName('');
     setReplyingTo(null);
   };
 
-  const startDM = (userId) => {
+  const startDM = (userId, userName) => {
     if (userId === socket.id) return;
-    setReplyingTo(null); 
+    setReplyingTo(null);
     setPrivateRecipient(userId);
+    setPrivateRecipientName(userName);
   };
 
   const handleReplyPrivately = (msg) => {
-    startDM(msg.senderId);
-    setTimeout(() => setReplyingTo(msg), 50);
+    startDM(msg.senderId, msg.sender);
+    setReplyingTo(msg);
     setActiveMenu(null);
   };
 
@@ -424,7 +444,7 @@ function App() {
         unreadRooms={unreadRooms}
         onClose={() => setIsMobileMenuOpen(false)}
         handleDeleteRoom={handleDeleteRoom}
-        onJoin={(room, code) => { joinRoom(room, code); setPrivateRecipient(''); setIsMobileMenuOpen(false); }}
+        onJoin={(room, code) => { joinRoom(room, code); setPrivateRecipient(''); setPrivateRecipientName(''); setIsMobileMenuOpen(false); }}
         onCreate={(room) => { createRoom(room); setIsMobileMenuOpen(false); }}
       />
 
@@ -484,7 +504,7 @@ function App() {
               {users.filter(u => u.id !== socket?.id).map((u) => (
                 <li
                   key={u.id}
-                  onClick={() => setPrivateRecipient(privateRecipient === u.id ? '' : u.id)}
+                  onClick={() => startDM(u.id, u.username)}
                   className={`flex items-center justify-between px-2 py-1.5 rounded cursor-pointer text-sm transition ${u.id === privateRecipient ? 'bg-blue-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
                 >
                   <div className="flex items-center gap-2 truncate">
@@ -547,7 +567,7 @@ function App() {
                       <div className={`flex items-end gap-2 max-w-[85%] md:max-w-[70%] w-fit relative group ${isSent ? 'self-end flex-row-reverse' : 'self-start flex-row'}`}>
                         
                         <div 
-                          onClick={() => !isSent && startDM(msg.senderId)}
+                          onClick={() => !isSent && startDM(msg.senderId, msg.sender)}
                           className={`w-9 h-9 rounded-full bg-gray-400 text-white flex items-center justify-center font-bold text-sm flex-shrink-0 ${!isSent ? 'cursor-pointer hover:bg-blue-500 transition-colors' : ''}`}
                         >
                           {getInitials(msg.sender)}
@@ -555,7 +575,7 @@ function App() {
 
                         <div className="flex flex-col min-w-0">
                           <div 
-                            onClick={() => !isSent && startDM(msg.senderId)}
+                            onClick={() => !isSent && startDM(msg.senderId, msg.sender)}
                             className={`text-xs font-bold mb-1 ${isSent ? 'text-right text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:text-blue-600 cursor-pointer hover:underline'}`}
                           >
                             {isSent ? 'You' : msg.sender}
@@ -682,3 +702,4 @@ function App() {
 }
 
 export default AppWrapper;
+```
