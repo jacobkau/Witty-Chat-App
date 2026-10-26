@@ -32,9 +32,12 @@ const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen
   };
 
   const handleRoomClick = (room) => {
-    if (room.name === current && !isPrivateMode) return; // If already in the same room and not in private mode, do nothing
-    if (room.creatorId === myId || room.name === 'General') {
-      onJoin(room.name);
+    if (room.name === current && !isPrivateMode) return; 
+    
+    if (room.name === 'General') {
+      onJoin('General', ''); 
+    } else if (room.creatorId === myId) {
+      onJoin(room.name, ''); 
     } else {
       const code = window.prompt(`Enter secret code for ${room.name}:`);
       if (code) onJoin(room.name, code);
@@ -58,7 +61,6 @@ const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen
             <ul className="space-y-1">
               <li
                 onClick={() => handleRoomClick({ name: 'General', creatorId: 'system' })}
-                // Ensure the active highlight is only when NOT in private mode
                 className={`flex justify-between items-center px-3 py-2 rounded cursor-pointer transition ${current === 'General' && !isPrivateMode ? 'bg-blue-600 font-bold' : 'hover:bg-gray-700'}`}
               >
                 <span className="truncate flex items-center gap-2">
@@ -80,7 +82,6 @@ const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen
                 <li
                   key={room.name}
                   onClick={() => handleRoomClick(room)}
-                  // Ensure active highlight is only when NOT in private mode
                   className={`flex justify-between items-center px-3 py-2 rounded cursor-pointer transition ${room.name === current && !isPrivateMode ? 'bg-blue-600 font-bold' : 'hover:bg-gray-700'}`}
                 >
                   <span className="truncate">{room.name}</span>
@@ -319,11 +320,9 @@ function App() {
   };
 
   const handleLeaveRoom = () => {
-    // Force a clean state reset
     setPrivateRecipient(''); 
     setPrivateRecipientName('');
     setReplyingTo(null);
-    // Only join General if we are not already in it (prevents unnecessary socket spam)
     if (currentRoom !== 'General') {
       joinRoom('General');
     }
@@ -432,11 +431,10 @@ function App() {
         myId={myId}
         myEmail={myEmail}
         unreadRooms={unreadRooms}
-        isPrivateMode={!!privateRecipient} // Pass this so the sidebar knows the current mode
+        isPrivateMode={!!privateRecipient}
         onClose={() => setIsMobileMenuOpen(false)}
         handleDeleteRoom={handleDeleteRoom}
         onJoin={(room, code) => { 
-          // 🚨 CRITICAL FIX: Clear private chat before joining a room
           setPrivateRecipient(''); 
           setPrivateRecipientName('');
           setReplyingTo(null);
@@ -444,7 +442,7 @@ function App() {
           setIsMobileMenuOpen(false); 
         }}
         onCreate={(room) => { 
-          setPrivateRecipient(''); // Clear private chat before creating
+          setPrivateRecipient('');
           createRoom(room); 
           setIsMobileMenuOpen(false); 
         }}
