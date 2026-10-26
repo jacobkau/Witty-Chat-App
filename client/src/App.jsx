@@ -213,6 +213,23 @@ function App() {
   const activeUser = users.find((u) => u.id === privateRecipient);
   const activeUsername = activeUser ? activeUser.username : (privateRecipientName || 'User');
 
+  // 🚨 FIX: Filter messages for display, but keep the full array in state
+  const displayedMessages = messages.filter((msg) => {
+    if (msg.deletedFor && msg.deletedFor.includes(myEmail)) return false;
+
+    if (privateRecipient) {
+      // Show only private messages between me and the selected user
+      const isMyPrivateMsg = msg.isPrivate && (
+        (msg.senderId === socket.id && msg.to === privateRecipient) || 
+        (msg.senderId === privateRecipient && msg.to === socket.id)
+      );
+      return isMyPrivateMsg;
+    } else {
+      // Show only public room messages for the current room
+      return !msg.isPrivate && msg.room === currentRoom;
+    }
+  });
+
   useEffect(() => {
     if ('Notification' in window) {
       Notification.requestPermission().then((p) => setNotificationsEnabled(p === 'granted'));
@@ -221,7 +238,7 @@ function App() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, privateRecipient]);
+  }, [displayedMessages.length, privateRecipient]); // Scroll when displayed messages change
 
   useEffect(() => {
     const handleClickOutside = () => {
@@ -376,7 +393,7 @@ function App() {
   };
 
   const handleExportChat = () => {
-    const chatText = messages.map(m => `[${formatTime(m.createdAt)}] ${m.sender}: ${m.message}`).join('\n');
+    const chatText = displayedMessages.map(m => `[${formatTime(m.createdAt)}] ${m.sender}: ${m.message}`).join('\n');
     const blob = new Blob([chatText], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -526,24 +543,12 @@ function App() {
           <div className="flex flex-col flex-1 min-w-0 relative">
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2 w-full flex flex-col">
               
-              {messages.map((msg) => {
+              {displayedMessages.map((msg) => {
                 const isSent = msg.senderEmail === myEmail;
                 const isSystem = msg.sender === 'System';
                 const isPinned = msg.isPinned;
                 const isStarred = msg.isStarred;
                 
-                if (msg.deletedFor && msg.deletedFor.includes(myEmail)) return null;
-
-                if (privateRecipient) {
-                   const isMyPrivateMsg = msg.isPrivate && (
-                     (msg.senderId === socket.id && msg.to === privateRecipient) || 
-                     (msg.senderId === privateRecipient && msg.to === socket.id)
-                   );
-                   if (!isMyPrivateMsg) return null;
-                } else {
-                   if (msg.isPrivate) return null;
-                }
-
                 const rawDate = msg.createdAt || msg.id || new Date().toISOString();
                 const dateObj = new Date(rawDate);
                 const msgDate = isNaN(dateObj.getTime()) ? 'Unknown Date' : dateObj.toDateString();
