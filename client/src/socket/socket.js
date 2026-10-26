@@ -152,7 +152,7 @@ export const useSocket = () => {
         .catch((err) => console.error('Failed to send goodbye email:', err));
         
       alert('Your account has been deleted. You have left WittyChat.');
-      window.location.reload(); 
+      window.location.reload(); // Force full reload to logout
     };
 
     socket.on('connect', onConnect);
