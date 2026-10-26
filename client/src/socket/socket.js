@@ -60,7 +60,13 @@ export const useSocket = () => {
         await fetch(`${SOCKET_URL}/upload`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ file: base64String, username, socketId: socket.id, room: currentRoom }),
+          body: JSON.stringify({
+            file: base64String,
+            username: username,
+            socketId: socket.id,
+            room: currentRoom,
+            email: myEmail, 
+          }),
         });
       } catch (error) {
         console.error('Error uploading file:', error);
@@ -80,7 +86,6 @@ export const useSocket = () => {
     socket.emit('delete_room', roomName);
   };
 
-  // NEW: Delete Account entirely
   const deleteAccount = () => {
     socket.emit('request_account_deletion');
   };
@@ -126,16 +131,15 @@ export const useSocket = () => {
         message: `Hello ${creatorName},\n\nYou have successfully created the room "${roomName}".\n\nYour secret code is: ${secretCode}\n\nShare this code with anyone you want to invite.`,
       };
 
-      const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID || 'YOUR_SERVICE_ID';
-      const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID || 'YOUR_TEMPLATE_ID';
-      const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY || 'YOUR_PUBLIC_KEY';
+      const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
+      const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
+      const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
 
       emailjs.send(serviceId, templateId, templateParams, publicKey)
         .then(() => alert(`Room created! The secret code has been emailed to ${creatorEmail}.`))
         .catch(() => alert(`Room created! Failed to send email.\n\nYour secret code is: ${secretCode}`));
     };
 
-    // NEW: Handle Goodbye Email
     const onAccountDeleted = ({ email, username }) => {
       const templateParams = {
         from_name: 'WittyChat System',
@@ -144,15 +148,15 @@ export const useSocket = () => {
         message: `Hello ${username},\n\nWe're sad to see you go. Your account has been successfully deleted from our database. Your chat messages will remain visible to others.\n\nThank you for using WittyChat.`,
       };
 
-      const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID || 'YOUR_SERVICE_ID';
-      const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID || 'YOUR_TEMPLATE_ID';
-      const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY || 'YOUR_PUBLIC_KEY';
+      const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
+      const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
+      const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
 
       emailjs.send(serviceId, templateId, templateParams, publicKey)
         .catch((err) => console.error('Failed to send goodbye email:', err));
         
       alert('Your account has been deleted. You have left WittyChat.');
-      window.location.reload(); // Force full reload to logout
+      window.location.reload();
     };
 
     socket.on('connect', onConnect);
