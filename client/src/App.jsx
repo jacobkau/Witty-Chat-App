@@ -29,7 +29,6 @@ const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen
 
   const handleRoomClick = (room) => {
     if (room.name === current) return;
-
     if (room.creatorId === myId || room.name === 'General') {
       onJoin(room.name);
     } else {
@@ -99,7 +98,7 @@ function formatTime(ts) {
 function formatDateDivider(ts) {
   if (!ts) return 'UNKNOWN DATE';
   const d = new Date(ts);
-  if (isNaN(d.getTime())) return 'UNKNOWN DATE'; // Safeguard against invalid dates
+  if (isNaN(d.getTime())) return 'UNKNOWN DATE';
 
   const now = new Date();
   const isToday = d.toDateString() === now.toDateString();
@@ -349,11 +348,11 @@ function App() {
           </aside>
 
           <div className="flex flex-col flex-1 min-w-0">
-            {/* MESSAGES LIST: Note the w-full here to ensure it takes full width */}
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2 w-full flex flex-col">
               
               {messages.map((msg) => {
-                const isSent = msg.senderId === socket?.id;
+                // 🚨 THE FIX: Compare emails instead of temporary socket IDs
+                const isSent = msg.senderEmail === myEmail;
                 const isSystem = msg.sender === 'System';
                 
                 const rawDate = msg.createdAt || msg.id || new Date().toISOString();
