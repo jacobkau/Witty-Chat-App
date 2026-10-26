@@ -4,7 +4,7 @@ import { ThemeContext, useTheme } from './context/ThemeContext';
 import { 
   Trash2, Paperclip, Moon, Sun, Menu, X, MessageCircle, 
   LogOut, UserX, Loader2, ArrowLeft, Users, Reply, Copy, Pin, 
-  Star, Share2, Info, ShieldAlert, Download, MoreVertical 
+  Star, Share2, Info, ShieldAlert, Download, MoreVertical, FileText
 } from 'lucide-react';
 
 const EMOJI_REACTIONS = ['👍', '❤️', '😂', '😮', '😢'];
@@ -213,19 +213,16 @@ function App() {
   const activeUser = users.find((u) => u.id === privateRecipient);
   const activeUsername = activeUser ? activeUser.username : (privateRecipientName || 'User');
 
-  // 🚨 FIX: Filter messages for display, but keep the full array in state
   const displayedMessages = messages.filter((msg) => {
     if (msg.deletedFor && msg.deletedFor.includes(myEmail)) return false;
 
     if (privateRecipient) {
-      // Show only private messages between me and the selected user
       const isMyPrivateMsg = msg.isPrivate && (
         (msg.senderId === socket.id && msg.to === privateRecipient) || 
         (msg.senderId === privateRecipient && msg.to === socket.id)
       );
       return isMyPrivateMsg;
     } else {
-      // Show only public room messages for the current room
       return !msg.isPrivate && msg.room === currentRoom;
     }
   });
@@ -238,7 +235,7 @@ function App() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [displayedMessages.length, privateRecipient]); // Scroll when displayed messages change
+  }, [displayedMessages.length, privateRecipient]); 
 
   useEffect(() => {
     const handleClickOutside = () => {
@@ -617,13 +614,50 @@ function App() {
                                   <p className="whitespace-pre-wrap">{msg.message}</p>
                                 )
                               )}
-                              {msg.fileUrl && (msg.fileType?.startsWith('image') || msg.fileType?.includes('jpg') || msg.fileType?.includes('png') ? (
-                                <img src={msg.fileUrl} alt={msg.fileName} onClick={(e) => { e.stopPropagation(); window.open(msg.fileUrl, '_blank'); }} className="max-w-full max-h-72 rounded-lg mt-1 cursor-pointer" />
-                              ) : (
-                                <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 mt-1 underline font-bold">
-                                  <Paperclip size={14} /> {msg.fileName || 'Download File'}
-                                </a>
-                              ))}
+                              
+                              {/* 🚨 FILE RENDERING LOGIC */}
+                              {msg.fileUrl && (
+                                msg.fileType?.startsWith('image') || msg.fileType?.includes('jpg') || msg.fileType?.includes('png') ? (
+                                  <img 
+                                    src={msg.fileUrl} 
+                                    alt={msg.fileName} 
+                                    onClick={(e) => { e.stopPropagation(); window.open(msg.fileUrl, '_blank'); }} 
+                                    className="max-w-full max-h-72 rounded-lg mt-1 cursor-pointer object-cover" 
+                                  />
+                                ) : msg.fileType?.includes('pdf') || msg.fileName?.toLowerCase().endsWith('.pdf') ? (
+                                  <div className="mt-2 border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden bg-white dark:bg-gray-900 w-full max-w-sm">
+                                    <div className="flex items-center justify-between bg-gray-100 dark:bg-gray-800 px-3 py-2 border-b border-gray-300 dark:border-gray-600">
+                                      <span className="text-sm font-semibold truncate flex items-center gap-2">
+                                        <FileText size={16} className="text-red-500" /> {msg.fileName}
+                                      </span>
+                                      <a 
+                                        href={msg.fileUrl.replace('/upload/', '/upload/fl_attachment/')} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="text-xs text-blue-500 hover:underline"
+                                      >
+                                        Download
+                                      </a>
+                                    </div>
+                                    <iframe 
+                                      src={`${msg.fileUrl}#toolbar=0`} 
+                                      className="w-full h-48 bg-gray-50" 
+                                      title={msg.fileName}
+                                    />
+                                  </div>
+                                ) : (
+                                  <a 
+                                    href={msg.fileUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    onClick={(e) => e.stopPropagation()} 
+                                    className="inline-flex items-center gap-1 mt-1 underline font-bold"
+                                  >
+                                    <Paperclip size={14} /> {msg.fileName || 'Download File'}
+                                  </a>
+                                )
+                              )}
                             </div>
 
                             {activeMenu === (msg._id || msg.id) && (
