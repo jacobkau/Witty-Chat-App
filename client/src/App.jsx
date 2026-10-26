@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSocket } from './socket/socket';
 import { ThemeContext, useTheme } from './context/ThemeContext';
-import { Trash2, Paperclip, Moon, Sun, Menu, X, Hand, MessageCircle, LogOut, UserX, Loader2, ArrowLeft } from 'lucide-react';
+import { Trash2, Paperclip, Moon, Sun, Menu, X, Hand, MessageCircle, LogOut, UserX, Loader2, ArrowLeft, Users } from 'lucide-react';
 
 const EMOJI_REACTIONS = ['👍', '❤️', '😂', '😮', '😢'];
 
@@ -29,7 +29,7 @@ const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen
 
   const handleRoomClick = (room) => {
     if (room.name === current) return;
-    if (room.creatorId === myId || room.name === 'General') {
+    if (room.creatorId === myId || room.name === 'Community Chat') {
       onJoin(room.name);
     } else {
       const code = window.prompt(`Enter secret code for ${room.name}:`);
@@ -57,7 +57,9 @@ const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen
                 onClick={() => handleRoomClick({ name: 'General', creatorId: 'system' })}
                 className={`flex justify-between items-center px-3 py-2 rounded cursor-pointer transition ${current === 'General' ? 'bg-blue-600 font-bold' : 'hover:bg-gray-700'}`}
               >
-                <span className="truncate">🌍 General</span>
+                <span className="truncate flex items-center gap-2">
+                  <Users size={16} /> Community Chat
+                </span>
               </li>
             </ul>
           </div>
@@ -212,7 +214,7 @@ function App() {
     const handleRoomDeleted = (deletedRoom) => {
       if (currentRoom === deletedRoom) {
         joinRoom('General');
-        alert(`Room '${deletedRoom}' was deleted. You have been moved to General.`);
+        alert(`Room '${deletedRoom}' was deleted. You have been moved to Community Chat.`);
       }
     };
     socket.on('room_deleted', handleRoomDeleted);
@@ -248,7 +250,7 @@ function App() {
 
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
-    if (file) uploadFile(file);
+    if (file) uploadFile(file, privateRecipient);
   };
 
   const handleDeleteAccount = () => {
@@ -307,9 +309,6 @@ function App() {
               ) : ('Join WittyChat')}
             </button>
           </form>
-          <p className="text-center text-gray-400 text-sm mt-6">
-            Status: {connectionStatus}
-          </p>
         </div>
       </div>
     );
