@@ -8,18 +8,7 @@ import {
 } from 'lucide-react';
 
 const EMOJI_REACTIONS = ['👍', '❤️', '😂', '😮', '😢'];
-useEffect(() => {
-  const handlePageShow = (event) => {
-    if (event.persisted) {
-      if (!socket.connected) {
-        socket.connect();
-      }
-    }
-  };
-  
-  window.addEventListener('pageshow', handlePageShow);
-  return () => window.removeEventListener('pageshow', handlePageShow);
-}, []);
+
 const ReactionPicker = ({ onSelect }) => (
   <div className="flex gap-1 mt-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-1 shadow-md">
     {EMOJI_REACTIONS.map((emoji) => (
@@ -30,7 +19,7 @@ const ReactionPicker = ({ onSelect }) => (
   </div>
 );
 
-const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen, onClose, myId, myEmail, unreadRooms }) => {
+const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen, onClose, myId, myEmail, unreadRooms, isPrivateMode }) => {
   const [newRoom, setNewRoom] = useState('');
 
   const handleCreate = () => {
@@ -43,7 +32,7 @@ const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen
   };
 
   const handleRoomClick = (room) => {
-    if (room.name === current) return;
+    if (room.name === current && !isPrivateMode) return; // If already in the same room and not in private mode, do nothing
     if (room.creatorId === myId || room.name === 'General') {
       onJoin(room.name);
     } else {
@@ -69,7 +58,8 @@ const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen
             <ul className="space-y-1">
               <li
                 onClick={() => handleRoomClick({ name: 'General', creatorId: 'system' })}
-                className={`flex justify-between items-center px-3 py-2 rounded cursor-pointer transition ${current === 'General' ? 'bg-blue-600 font-bold' : 'hover:bg-gray-700'}`}
+                // Ensure the active highlight is only when NOT in private mode
+                className={`flex justify-between items-center px-3 py-2 rounded cursor-pointer transition ${current === 'General' && !isPrivateMode ? 'bg-blue-600 font-bold' : 'hover:bg-gray-700'}`}
               >
                 <span className="truncate flex items-center gap-2">
                   <Users size={16} /> Community Chat
@@ -90,7 +80,8 @@ const RoomsPanel = ({ rooms, current, onJoin, onCreate, handleDeleteRoom, isOpen
                 <li
                   key={room.name}
                   onClick={() => handleRoomClick(room)}
-                  className={`flex justify-between items-center px-3 py-2 rounded cursor-pointer transition ${room.name === current ? 'bg-blue-600 font-bold' : 'hover:bg-gray-700'}`}
+                  // Ensure active highlight is only when NOT in private mode
+                  className={`flex justify-between items-center px-3 py-2 rounded cursor-pointer transition ${room.name === current && !isPrivateMode ? 'bg-blue-600 font-bold' : 'hover:bg-gray-700'}`}
                 >
                   <span className="truncate">{room.name}</span>
                   <div className="flex items-center gap-2">
@@ -328,10 +319,14 @@ function App() {
   };
 
   const handleLeaveRoom = () => {
-    joinRoom('General');
+    // Force a clean state reset
     setPrivateRecipient(''); 
     setPrivateRecipientName('');
     setReplyingTo(null);
+    // Only join General if we are not already in it (prevents unnecessary socket spam)
+    if (currentRoom !== 'General') {
+      joinRoom('General');
+    }
   };
 
   const startDM = (userId, userName) => {
@@ -437,10 +432,22 @@ function App() {
         myId={myId}
         myEmail={myEmail}
         unreadRooms={unreadRooms}
+        isPrivateMode={!!privateRecipient} // Pass this so the sidebar knows the current mode
         onClose={() => setIsMobileMenuOpen(false)}
         handleDeleteRoom={handleDeleteRoom}
-        onJoin={(room, code) => { joinRoom(room, code); setPrivateRecipient(''); setPrivateRecipientName(''); setIsMobileMenuOpen(false); }}
-        onCreate={(room) => { createRoom(room); setIsMobileMenuOpen(false); }}
+        onJoin={(room, code) => { 
+          // 🚨 CRITICAL FIX: Clear private chat before joining a room
+          setPrivateRecipient(''); 
+          setPrivateRecipientName('');
+          setReplyingTo(null);
+          joinRoom(room, code); 
+          setIsMobileMenuOpen(false); 
+        }}
+        onCreate={(room) => { 
+          setPrivateRecipient(''); // Clear private chat before creating
+          createRoom(room); 
+          setIsMobileMenuOpen(false); 
+        }}
       />
 
       <div className="flex flex-col h-screen min-w-0">
@@ -458,7 +465,11 @@ function App() {
 
             <h2 className="text-lg md:text-xl font-bold truncate flex items-center gap-2">
               {privateRecipient ? (
-                <><MessageCircle size={20} className="text-blue-500" /> {activeTitle}</>
+                <>
+                  <MessageCircle size={20} className="text-blue-500" /> 
+                  {activeTitle}
+                  <button onClick={handleLeaveRoom} className="ml-2 text-xs bg-red-100 text-red-600 px-2 py-1 rounded hover:bg-red-200 transition">Close</button>
+                </>
               ) : (
                 <>WittyChat <span className="text-blue-600 dark:text-blue-400">{activeTitle}</span></>
               )}
