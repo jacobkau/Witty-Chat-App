@@ -4,7 +4,7 @@ import { ThemeContext, useTheme } from './context/ThemeContext';
 import { 
   Trash2, Paperclip, Moon, Sun, Menu, X, MessageCircle, 
   LogOut, UserX, Loader2, ArrowLeft, Users, Reply, Copy, Pin, 
-  Star, Share2, Info, ShieldAlert, Download, MoreVertical, FileText
+  Star, Share2, Info, ShieldAlert, Download, MoreVertical, FileText, FileArchive, FileSpreadsheet
 } from 'lucide-react';
 
 const EMOJI_REACTIONS = ['👍', '❤️', '😂', '😮', '😢'];
@@ -150,6 +150,9 @@ function formatDateDivider(ts) {
   
   return d.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 }
+
+// Helper to determine file type
+const getFileExtension = (name) => name?.split('.').pop()?.toLowerCase() || '';
 
 function AppWrapper() {
   const [theme, setTheme] = useState(() => {
@@ -553,6 +556,16 @@ function App() {
                 const showDateDivider = msgDate !== lastRenderedDate;
                 if (showDateDivider) lastRenderedDate = msgDate;
 
+                // 🚨 ADVANCED FILE TYPE LOGIC
+                const ext = getFileExtension(msg.fileName);
+                const isImage = msg.fileType?.startsWith('image') || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
+                const isPDF = msg.fileType?.includes('pdf') || ext === 'pdf';
+                const isVideo = msg.fileType?.startsWith('video') || ['mp4', 'webm', 'ogg'].includes(ext);
+                const isAudio = msg.fileType?.startsWith('audio') || ['mp3', 'wav', 'ogg'].includes(ext);
+                const isArchive = ['zip', 'rar', '7z', 'tar', 'gz'].includes(ext);
+                const isDoc = ['doc', 'docx'].includes(ext);
+                const isExcel = ['xls', 'xlsx', 'csv'].includes(ext);
+
                 return (
                   <React.Fragment key={msg._id || msg.id || Math.random()}>
                     {showDateDivider && (
@@ -615,48 +628,67 @@ function App() {
                                 )
                               )}
                               
-                              {/* 🚨 FILE RENDERING LOGIC */}
+                              {/* 🚨 FILE RENDERING LOGIC FOR ALL TYPES */}
                               {msg.fileUrl && (
-                                msg.fileType?.startsWith('image') || msg.fileType?.includes('jpg') || msg.fileType?.includes('png') ? (
-                                  <img 
-                                    src={msg.fileUrl} 
-                                    alt={msg.fileName} 
-                                    onClick={(e) => { e.stopPropagation(); window.open(msg.fileUrl, '_blank'); }} 
-                                    className="max-w-full max-h-72 rounded-lg mt-1 cursor-pointer object-cover" 
-                                  />
-                                ) : msg.fileType?.includes('pdf') || msg.fileName?.toLowerCase().endsWith('.pdf') ? (
-                                  <div className="mt-2 border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden bg-white dark:bg-gray-900 w-full max-w-sm">
-                                    <div className="flex items-center justify-between bg-gray-100 dark:bg-gray-800 px-3 py-2 border-b border-gray-300 dark:border-gray-600">
-                                      <span className="text-sm font-semibold truncate flex items-center gap-2">
-                                        <FileText size={16} className="text-red-500" /> {msg.fileName}
-                                      </span>
-                                      <a 
-                                        href={msg.fileUrl.replace('/upload/', '/upload/fl_attachment/')} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        onClick={(e) => e.stopPropagation()}
-                                        className="text-xs text-blue-500 hover:underline"
-                                      >
-                                        Download
-                                      </a>
-                                    </div>
-                                    <iframe 
-                                      src={`${msg.fileUrl}#toolbar=0`} 
-                                      className="w-full h-48 bg-gray-50" 
-                                      title={msg.fileName}
+                                <>
+                                  {isImage && (
+                                    <img 
+                                      src={msg.fileUrl} 
+                                      alt={msg.fileName} 
+                                      onClick={(e) => { e.stopPropagation(); window.open(msg.fileUrl, '_blank'); }} 
+                                      className="max-w-full max-h-72 rounded-lg mt-1 cursor-pointer object-cover" 
                                     />
-                                  </div>
-                                ) : (
-                                  <a 
-                                    href={msg.fileUrl} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer" 
-                                    onClick={(e) => e.stopPropagation()} 
-                                    className="inline-flex items-center gap-1 mt-1 underline font-bold"
-                                  >
-                                    <Paperclip size={14} /> {msg.fileName || 'Download File'}
-                                  </a>
-                                )
+                                  )}
+
+                                  {isPDF && (
+                                    <div className="mt-2 border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden bg-white dark:bg-gray-900 w-full max-w-sm">
+                                      <div className="flex items-center justify-between bg-gray-100 dark:bg-gray-800 px-3 py-2 border-b border-gray-300 dark:border-gray-600">
+                                        <span className="text-sm font-semibold truncate flex items-center gap-2">
+                                          <FileText size={16} className="text-red-500" /> {msg.fileName}
+                                        </span>
+                                        <a href={msg.fileUrl.replace('/upload/', '/upload/fl_attachment/')} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-xs text-blue-500 hover:underline">Download</a>
+                                      </div>
+                                      <iframe src={`${msg.fileUrl}#toolbar=0`} className="w-full h-48 bg-gray-50" title={msg.fileName} />
+                                    </div>
+                                  )}
+
+                                  {isVideo && (
+                                    <div className="mt-2 rounded-lg overflow-hidden bg-black">
+                                      <video controls className="max-w-full max-h-72">
+                                        <source src={msg.fileUrl} type={msg.fileType} />
+                                        Your browser does not support the video tag.
+                                      </video>
+                                    </div>
+                                  )}
+
+                                  {isAudio && (
+                                    <div className="mt-2 w-full max-w-sm">
+                                      <audio controls className="w-full">
+                                        <source src={msg.fileUrl} type={msg.fileType} />
+                                        Your browser does not support the audio element.
+                                      </audio>
+                                    </div>
+                                  )}
+
+                                  {/* Other Files (Documents, Archives, etc.) */}
+                                  {!isImage && !isPDF && !isVideo && !isAudio && (
+                                    <a 
+                                      href={msg.fileUrl} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer" 
+                                      onClick={(e) => e.stopPropagation()} 
+                                      className={`mt-2 flex items-center gap-3 p-3 rounded-lg border ${isSent ? 'border-blue-400 bg-blue-700/50' : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 transition'}`}
+                                    >
+                                      <div className={`p-2 rounded-full ${isSent ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-800 text-gray-500'}`}>
+                                        {isArchive ? <FileArchive size={20} /> : isExcel ? <FileSpreadsheet size={20} /> : <FileText size={20} />}
+                                      </div>
+                                      <div className="flex flex-col min-w-0">
+                                        <span className="text-sm font-bold truncate">{msg.fileName}</span>
+                                        <span className="text-xs opacity-70 uppercase">{ext}</span>
+                                      </div>
+                                    </a>
+                                  )}
+                                </>
                               )}
                             </div>
 
